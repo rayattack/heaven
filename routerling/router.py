@@ -224,7 +224,7 @@ class Routes(object):
 
             # call request handler
             if w._abort: raise AbortException
-            if iscoroutinefunction(handler): await handler(r, w, context)
+            if iscoroutinefunction(handler): await handler(r, w, c)
             else: handler(r, w, c)
 
             # call all post handle request hooks
