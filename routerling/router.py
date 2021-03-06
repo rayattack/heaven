@@ -76,7 +76,6 @@ class Route(object):
     def match(self, routes: deque, r: HttpRequest):
         matched = None
         node = self
-        mylist = list(routes)
         while routes:
             route = routes.popleft()
             current_node = node.children.get(route)
