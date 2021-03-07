@@ -14,6 +14,20 @@ def MethodDispatch(method):
     return decorator
 
 
+@singledispatch
+def _body(payload):
+    return payload
+
+@_body.register(str)
+def _(payload: str):
+    return payload.encode()
+
+@_body.register(int)
+@_body.register(float)
+def _(payload):
+    return f'{payload}'.encode()
+
+
 class ResponseWriter():
     def __init__(self, scope):
         self._abort = False
@@ -43,7 +57,7 @@ class ResponseWriter():
     
     @body.setter
     def body(self, value):
-        self._body = value
+        self._body = _body(value)
     
     @property
     def headers(self):
