@@ -101,6 +101,11 @@ class Route(object):
                     print(wildcard.route, ' was actually seen?')
                     return wildcard.route, wildcard.handler
 
+                # also need to use deviation point here as it is possible for nested match to
+                # bring us here without exiting early from above
+                if deviation_point:
+                    return deviation_point.route, deviation_point.handler
+
                 return matched, self.not_found
             node = current_node
                 
