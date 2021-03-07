@@ -106,6 +106,7 @@ class Route(object):
                 
         # was there a wildcard encountered along the way
         if deviation_point and not node.route:
+            r.params = '*', route_at_deviation
             return deviation_point.route, deviation_point.handler
         return node.route, node.handler
     
