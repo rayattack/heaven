@@ -50,5 +50,9 @@ class HttpRequest():
     def querystring(self):
         return self._scope.get('query_string', {})
     
+    @property
+    def url(self):
+        return self._scope.get('path')
+
     async def stream(self):
         return await self._receive()
