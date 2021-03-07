@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "routerling"
-version = "0.1.5"
+version = "0.1.7"
 description = "Extremely Stupid Simple, Blazing Fast, Get Out of your way immediately Microframework for building Python Web Applications."
 authors = ["Raymond Ortserga <ortserga@gmail.com>"]
 license = "MIT"
@@ -10,7 +10,7 @@ readme = "README.md"
 python = "^3.6"
 
 [tool.poetry.dev-dependencies]
-pytest = "^5.2"
+
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

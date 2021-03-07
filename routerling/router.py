@@ -75,6 +75,7 @@ class Route(object):
 
     def match(self, routes: deque, r: HttpRequest):
         matched: str = None
+        route_at_deviation = None
         deviation_point: Route = None
         node: Route = self
         while routes:
@@ -84,26 +85,20 @@ class Route(object):
                 # is there a parameterized child?
                 current_node = node.children.get(':')
                 if current_node:
-                    # if r.params already registered should we throw an error or let them be lol...
-                    # Assume adults are in the room and leave it
                     r.params = current_node.parameterized, route
-
-                    # add a deviation point if the node also has a wildcard route and not already set
-                    # this could be easily tweaked to match last or first encounter but left as is
-                    deviation_point = node.children.get('*', deviation_point)
+                    if(node.children.get('*')):
+                        route_at_deviation = route
+                        deviation_point = node.children.get('*')
                     node = current_node
                     continue
 
-                # is there a wild card child at the same level as :? Weird but hey its possible.
-                # the minute a wildcard is seen all bets are off and children make no sense after it
                 wildcard = node.children.get('*')
                 if wildcard:
-                    print(wildcard.route, ' was actually seen?')
+                    r.params = '*', route
                     return wildcard.route, wildcard.handler
 
-                # also need to use deviation point here as it is possible for nested match to
-                # bring us here without exiting early from above
                 if deviation_point:
+                    r.params = '*', route_at_deviation
                     return deviation_point.route, deviation_point.handler
 
                 return matched, self.not_found
@@ -111,6 +106,7 @@ class Route(object):
                 
         # was there a wildcard encountered along the way
         if deviation_point and not node.route:
+            r.params = '*', route_at_deviation
             return deviation_point.route, deviation_point.handler
         return node.route, node.handler
     
