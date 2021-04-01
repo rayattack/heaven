@@ -14,3 +14,5 @@ MESSAGE_NOT_FOUND = 'Not found'
 STATUS_OK = OK = 200
 STATUS_CREATED = CREATED = 201
 STATUS_NOT_FOUND = NOT_FOUND = 404
+
+URL_ERROR_MESSAGE = 'Malformed route detected, all routes must start with a `/`'

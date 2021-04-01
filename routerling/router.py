@@ -23,7 +23,8 @@ from .constants import (
     POST,
     PUT,
     STATUS_NOT_FOUND,
-    TRACE
+    TRACE,
+    URL_ERROR_MESSAGE
 )
 
 from .errors import AbortException, UrlError
@@ -186,7 +187,7 @@ class Routes(object):
         route, handler = values
         routes = self.befores.get(route)
         if routes:
-            route.append(handler)
+            routes.append(handler)
         else:
             self.befores[route] = [handler]
     
@@ -285,10 +286,11 @@ class Router(object):
         self.rtx.add(method, route, handler)
 
     def AFTER(self, route: str, handler: Callable):
-        if not route.startswith('/'): raise UrlError('Malformed route detected, all routes must start with a `/`')
+        if not route.startswith('/'): raise UrlError(URL_ERROR_MESSAGE)
         self.rtx.after = route, handler
 
     def BEFORE(self, route: str, handler: Callable):
+        if not route.startswith('/'): raise UrlError(URL_ERROR_MESSAGE)
         self.rtx.before = route, handler
 
     def CONNECT(self, route: str, handler: Callable[[HttpRequest, ResponseWriter], object]):
