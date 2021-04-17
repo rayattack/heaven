@@ -4,3 +4,5 @@ from .response import ResponseWriter
 
 from .context import Context
 
+
+__version___ = '0.1.8'
