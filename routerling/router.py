@@ -88,14 +88,14 @@ class Route(object):
                 if current_node:
                     r.params = current_node.parameterized, route
                     if(node.children.get('*')):
-                        route_at_deviation = route
+                        route_at_deviation = '/'.join([route, *routes])
                         deviation_point = node.children.get('*')
                     node = current_node
                     continue
 
                 wildcard = node.children.get('*')
                 if wildcard:
-                    r.params = '*', route
+                    r.params = '*', '/'.join([route, *routes])
                     return wildcard.route, wildcard.handler
 
                 if deviation_point:
