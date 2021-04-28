@@ -1,5 +1,8 @@
+import sys
+
 from collections import deque
 from inspect import iscoroutinefunction
+from ipaddress import ip_address
 
 from uvicorn import run
 from typing import Callable, Generic, TypeVar
@@ -39,6 +42,7 @@ methods = ['get', 'post', 'put', 'delete', 'connect', 'head', 'options', 'patch'
 Handler = Callable[[HttpRequest, ResponseWriter], object]
 
 
+DEFAULT = 'www'
 MARK_PRESENT = 'yes father... (RIP Rev. Angus Fraser...)'
 SEPARATOR = INDEX = "/"
 
@@ -195,13 +199,13 @@ class Routes(object):
         for route in routes:...
         return None, None
 
-    async def handle(self, scope, receive, send):
+    async def handle(self, scope, receive, send, metadata=None):
         """
         Traverse internal route tree and use appropriate method
         """
         body = await receive()
 
-        r = HttpRequest(scope, body, receive)
+        r = HttpRequest(scope, body, receive, metadata)
         w = ResponseWriter(scope)
         c = Context()
 
@@ -266,11 +270,14 @@ class Routes(object):
 
 
 class Router(object):
-    def __init__(self) -> None:
-        self.rtx = Routes()
-    
+    def __init__(self):
+        self.subdomains = {}
+        self.subdomains[DEFAULT] = Routes()
+
     async def __call__(self, scope, receive, send):
-        response = await self.rtx.handle(scope, receive, send)
+        metadata = self.__subdomain__(scope)
+        engine = self.subdomains.get(metadata[0])
+        response = await engine.handle(scope, receive, send, metadata)
         await send({
             'type': 'http.response.start',
             'headers': response.headers,
@@ -279,48 +286,77 @@ class Router(object):
         await send({
             'type': 'http.response.body',
             'body': response.body
-        }) 
+        })
+    
+    def __subdomain__(self, scope):
+        headers = {}
 
-    def abettor(self, method: str, route: str, handler: Handler):
+        for header in scope.get('headers'):
+            key, value = header
+            headers[key.decode()] = value.decode()
+            
+        host: bytes = headers.get('host')
+        if host.startswith('http://'): host = host.replace('http://', '')
+        else: host = host.replace('https://', '')
+        host = host.rsplit(':')[0]
+        try: ip_address(host)
+        except: return DEFAULT, headers
+        parts = host.split('.', 2)
+        has_subdomain = len(parts) > 2
+        return (parts[0], headers,) if has_subdomain else (DEFAULT, headers,)
+
+    def abettor(self, method: str, route: str, handler: Handler, subdomain=DEFAULT):
         if not route.startswith('/'): raise UrlError
-        self.rtx.add(method, route, handler)
+        engine = self.subdomains.get(subdomain)
+        if not isinstance(engine, Routes):
+            sys.exit('Error: subdomain not registered on router')
+        engine.add(method, route, handler)
 
-    def AFTER(self, route: str, handler: Callable):
+    def AFTER(self, route: str, handler: Callable, subdomain=DEFAULT):
         if not route.startswith('/'): raise UrlError(URL_ERROR_MESSAGE)
-        self.rtx.after = route, handler
+        engine = self.subdomains.get(subdomain)
+        if not isinstance(engine, Routes):
+            raise NameError('Subdomain does not exist - register subdomain on router first')
+        engine.after = route, handler
 
-    def BEFORE(self, route: str, handler: Callable):
+    def BEFORE(self, route: str, handler: Callable, subdomain=DEFAULT):
         if not route.startswith('/'): raise UrlError(URL_ERROR_MESSAGE)
-        self.rtx.before = route, handler
+        engine = self.subdomains.get(subdomain)
+        if not isinstance(engine, Routes):
+            raise NameError('Subdomain does not exist - register subdomain on router first')
+        engine.before = route, handler
 
-    def CONNECT(self, route: str, handler: Callable[[HttpRequest, ResponseWriter], object]):
-        self.abettor(METHOD_CONNECT, route, handler)
+    def CONNECT(self, route: str, handler: Callable[[HttpRequest, ResponseWriter], object], subdomain=DEFAULT):
+        self.abettor(METHOD_CONNECT, route, handler, subdomain)
 
-    def DELETE(self, route: str, handler: Callable):
-        self.abettor(METHOD_DELETE, route, handler)
+    def DELETE(self, route: str, handler: Callable, subdomain=DEFAULT):
+        self.abettor(METHOD_DELETE, route, handler, subdomain)
     
-    def GET(self, route: str, handler: Callable):
-        self.abettor(METHOD_GET, route, handler)
+    def GET(self, route: str, handler: Callable, subdomain=DEFAULT):
+        self.abettor(METHOD_GET, route, handler, subdomain)
     
-    def HTTP(self, route: str, handler: Callable):
+    def HTTP(self, route: str, handler: Callable, subdomain=DEFAULT):
         for method in [CONNECT, DELETE, GET, OPTIONS, PATCH, POST, PUT, TRACE]:
-            self.abettor(method, route, handler)
+            self.abettor(method, route, handler, subdomain)
     
-    def OPTIONS(self, route: str, handler: Callable):
-        self.abettor(METHOD_OPTIONS, route, handler)
+    def OPTIONS(self, route: str, handler: Callable, subdomain=DEFAULT):
+        self.abettor(METHOD_OPTIONS, route, handler, subdomain)
     
-    def PATCH(self, route: str, handler: Callable):
-        self.abettor(METHOD_PATCH, route, handler)
+    def PATCH(self, route: str, handler: Callable, subdomain=DEFAULT):
+        self.abettor(METHOD_PATCH, route, handler, subdomain)
     
-    def POST(self, route: str, handler: Callable):
-        self.abettor(METHOD_POST, route, handler)
+    def POST(self, route: str, handler: Callable, subdomain=DEFAULT):
+        self.abettor(METHOD_POST, route, handler, subdomain)
     
-    def PUT(self, route: str, handler: Callable):
-        self.abettor(METHOD_PUT, route, handler)
+    def PUT(self, route: str, handler: Callable, subdomain=DEFAULT):
+        self.abettor(METHOD_PUT, route, handler, subdomain)
     
-    def TRACE(self, route: str, handler: Callable):
-        self.abettor(METHOD_TRACE, route, handler)
+    def TRACE(self, route: str, handler: Callable, subdomain=DEFAULT):
+        self.abettor(METHOD_TRACE, route, handler, subdomain)
 
-    def listen(self, host='localhost', port='8701', debug=False):
+    def listen(self, host='localhost', port='8701', debug=DEFAULT):
         # implement development server? uvicorn already present as dependency so not in python library
         pass
+
+    def subdomain(self, subdomain: str):
+        self.subdomains[subdomain] = Routes()

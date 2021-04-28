@@ -1,9 +1,27 @@
+class RequestHeaders(object):
+    def __init__(self, headers: dict):
+        self.this = headers
+
+    def __getattr__(self, key: str):
+        """convert snake_cased headers to dashed and retrieve from headers dict
+        """
+        key = key.encode() if isinstance(key, str) else key
+
+        #ignore for custom x-headers NOTE to put this in documentation later...
+        k = key if key.lower().startswith(b'x-') else key.replace(b'_', b'-')
+        return self.this.get(k)
+
+    def get(self, key):
+        key = key.encode() if isinstance(key, str) else key
+        return self.this.get(key)
+
+
 class HttpRequest():
-    def __init__(self, scope, body, receive):
+    def __init__(self, scope, body, receive, metadata=None):
         self._scope = scope
         self._body = body
         self._receive = receive
-        self._headers = None
+        self._subdomain, self._headers = metadata
         self._params = None
 
     def _parse_qs(self):
@@ -50,6 +68,10 @@ class HttpRequest():
     def querystring(self):
         return self._scope.get('query_string', {})
     
+    @property
+    def subdomain(self):
+        return self._subdomain
+
     @property
     def url(self):
         return self._scope.get('path')
