@@ -300,7 +300,8 @@ class Router(object):
         else: host = host.replace('https://', '')
         host = host.rsplit(':')[0]
         try: ip_address(host)
-        except: return DEFAULT, headers
+        except: pass
+        else: return DEFAULT, headers
         parts = host.split('.', 2)
         has_subdomain = len(parts) > 2
         return (parts[0], headers,) if has_subdomain else (DEFAULT, headers,)

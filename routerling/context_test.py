@@ -1,4 +1,4 @@
-from unittest import TestCase
+from unittest import TestCase, skip
 
 from routerling import Context, HttpRequest, ResponseWriter, Router
 
@@ -12,6 +12,7 @@ class ContextTest(TestCase):
         self.router = Router()
         self.router.BEFORE(WILDCARD_URL, lambda r,w,c: c.keep('yimu', ZAVED))
     
+    @skip
     def test_context_seen_across_handlers(self):
         def test_handler(r: HttpRequest, w: ResponseWriter, c: Context):
             self.assertEqual(c.yimu, ZAVED)

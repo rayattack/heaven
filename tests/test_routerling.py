@@ -1,5 +1,5 @@
-from routerling import __version__
+import routerling
 
 
 def test_version():
-    assert __version__ == '0.1.0'
+    assert routerling.__version___ == '0.2.1'
