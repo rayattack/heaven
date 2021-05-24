@@ -51,6 +51,10 @@ class HttpRequest():
             for header in self._scope.get('headers'):
                 self._headers[header[0]] = header[1]
         return self._headers
+    
+    @property
+    def method(self):
+        return self._scope.get('method')
 
     @property
     def params(self):

@@ -241,6 +241,9 @@ class Routes(object):
 
             # call request handler
             if w._abort: raise AbortException
+            try: handler.__requesthandler__
+            except: pass
+            else: handler = handler.__call__
             if iscoroutinefunction(handler): await handler(r, w, c)
             else: handler(r, w, c)
 
@@ -276,7 +279,7 @@ class Router(object):
 
     async def __call__(self, scope, receive, send):
         metadata = self.__subdomain__(scope)
-        engine = self.subdomains.get(metadata[0])
+        engine = self.subdomains.get(metadata[0]) or self.subdomains.get('*')
         response = await engine.handle(scope, receive, send, metadata)
         await send({
             'type': 'http.response.start',
