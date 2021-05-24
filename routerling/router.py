@@ -269,7 +269,8 @@ class Routes(object):
             hooks.update(hookstore.get(f'/{joinedparts}{_}*', []))
         for hook in hooks:
             if w._abort: raise AbortException
-            hook(r, w, c)
+            if iscoroutinefunction(hook): await hook(r, w, c)
+            else: hook(r, w, c)
 
 
 class Router(object):
