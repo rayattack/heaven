@@ -12,6 +12,7 @@ from .constants import (
     DELETE,
     GET,
     HEAD,
+    INITIALIZATION_MESSAGE,
     MESSAGE_NOT_FOUND,
     METHOD_CONNECT,
     METHOD_DELETE,
@@ -50,10 +51,15 @@ SEPARATOR = INDEX = "/"
 def isparamx(r: str):
     return (':', r[1:],) if r.startswith(':') else (r, None,)
 
-
 def isvariable(r: str):
     newr = ':' if r.startswith(':') else r
     return newr, newr != r or r == '*'
+
+def notify(width=80):
+    drawline = lambda: print('=' * width)
+    drawline()
+    print('NOTE: The `LAST` initializer func above failed and prevented others from running')
+    drawline()
 
 
 class Route(object):
@@ -275,10 +281,15 @@ class Routes(object):
 
 class Router(object):
     def __init__(self):
+        self.finalized = False
+        self.initializers = set()
         self.subdomains = {}
         self.subdomains[DEFAULT] = Routes()
 
     async def __call__(self, scope, receive, send):
+        try: await self.finalize()
+        except: notify()
+
         metadata = self.__subdomain__(scope)
         engine = self.subdomains.get(metadata[0]) or self.subdomains.get('*')
         response = await engine.handle(scope, receive, send, metadata)
@@ -358,6 +369,21 @@ class Router(object):
     
     def TRACE(self, route: str, handler: Callable, subdomain=DEFAULT):
         self.abettor(METHOD_TRACE, route, handler, subdomain)
+    
+    def ONCE(self, func):
+        self.initializers.add(func)
+    
+    async def finalize(self):
+        if self.finalized: return
+        self.finalized = True
+        print(INITIALIZATION_MESSAGE)
+        i = len(self.initializers)
+        while self.initializers:
+            initializer, c = self.initializers.pop(), len(self.initializers)
+            index = i - c
+            print(f'({index}): ', initializer.__name__, '\n')
+            if iscoroutinefunction(initializer): await initializer()
+            else: initializer()
 
     def listen(self, host='localhost', port='8701', debug=DEFAULT):
         # implement development server? uvicorn already present as dependency so not in python library
