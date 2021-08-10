@@ -29,7 +29,7 @@ def _(payload):
 
 
 class ResponseWriter():
-    def __init__(self, scope):
+    def __init__(self):
         self._abort = False
         self._body = MESSAGE_NOT_FOUND.encode()
         self._headers = []
@@ -65,6 +65,9 @@ class ResponseWriter():
 
     @headers.setter
     def headers(self, value):
+        key, val = value
+        _encode = lambda k: k.encode('utf-8') if isinstance(k, str) else k
+        value = _encode(key), _encode(val)
         self._headers.append(value)
 
     @property
