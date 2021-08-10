@@ -12,6 +12,7 @@ def handle_customer_created(r: HttpRequest, w: ResponseWriter, ctx: Context):...
 
 
 class TestRouter(TestCase):
+    # TODO: come back here and reimplement this properly to test
     def setUp(self, *args, **kwargs):
         self.router = Router()
         self.router.GET("/customers", handle_customer_created)
