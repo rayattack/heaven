@@ -31,7 +31,7 @@ from .constants import (
     URL_ERROR_MESSAGE
 )
 
-from .errors import AbortException, UrlError
+from .errors import AbortException, SubdomainError, UrlDuplicateError, UrlError
 from .request import HttpRequest
 from .response import ResponseWriter
 from .context import Context
@@ -139,7 +139,9 @@ class Routes(object):
 
     def add(self, method: str, route: str, handler: Callable):
         # ensure the method and route combo has not been already registered
-        assert self.cache.get(method, {}).get(route) is None
+        try: assert self.cache.get(method, {}).get(route) is None
+        except AssertionError: raise UrlDuplicateError
+
         self.cache[method][route] = MARK_PRESENT
 
         # here we check and set the root to be a route node i.e. / with no handler
@@ -262,6 +264,14 @@ class Routes(object):
         # i.e. hook lookup is constant but running many hooks will
         # increase the time it takes before the response is released to the network
         return w
+    
+    def remove(self, url: str):
+        """Remove the URI provided from the url path mapping tree.
+        1. Check if the uri does exists
+        2. Remove the func handlers already attached to run for uri match
+        3: Right here - right now, Surpass your limits like Asta... 
+        """
+        pass
 
     async def xhooks(self, hookstore, matched, r: HttpRequest, w: ResponseWriter, c: Context):
         # traverse the before tree - changed to tree to match routes tree
@@ -325,7 +335,7 @@ class Router(object):
         if not route.startswith('/'): raise UrlError
         engine = self.subdomains.get(subdomain)
         if not isinstance(engine, Routes):
-            sys.exit('Error: subdomain not registered on router')
+            raise SubdomainError
         engine.add(method, route, handler)
 
     def AFTER(self, route: str, handler: Callable, subdomain=DEFAULT):
