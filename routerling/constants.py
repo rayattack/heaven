@@ -1,3 +1,5 @@
+DEFAULT = 'www'
+
 INITIALIZATION_MESSAGE = '\n-------------- Initializing `ONCE` Func(s) --------------'
 
 METHOD_CONNECT = CONNECT = 'CONNECT'
