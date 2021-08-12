@@ -1,12 +1,12 @@
+from collections import deque
+from typing import Callable
 from unittest import TestCase
 from unittest.mock import Mock
 
 from routerling import Router
 from routerling.router import DEFAULT, Routes, _isparamx
 from routerling.errors import SubdomainError, UrlDuplicateError, UrlError
-from routerling.response import ResponseWriter
-from routerling.request import HttpRequest
-from routerling.context import Context
+from routerling.mocks import MockHttpRequest
 
 # internal test modules
 from .test_request import one, two, three
@@ -65,7 +65,19 @@ class RoutesTest(TestCase):
         self.assertFalse(self.engine.cache['GET']['/v1/customers'])
     
     def test_match(self):
-        self.engine.routes.get('GET').match
+        xsplit = lambda x: x.strip('/').split('/')
+        url_q1 = deque(xsplit('/v1/customers'))
+        url_q2 = deque(xsplit('/v1/customers/34/receipts'))
+
+        rv = self.engine.routes.get('GET').match(url_q1, MockHttpRequest('/v1/customers'))
+        self.assertIsInstance(rv, tuple)
+
+        route, handler = rv
+        self.assertIsInstance(route, str)
+        self.assertEqual(handler, three)
+
+        #TODO: Continue testing match with match for : and * or for when not matched
+        return
 
 
 class RouterTest(TestCase):
