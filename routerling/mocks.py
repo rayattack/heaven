@@ -41,7 +41,7 @@ MOCK_SCOPE = {
 }
 
 
-def get_mock_receiver(event, body):
+def _get_mock_receiver(event, body):
     async def receive():
         return {
             'type': event,
@@ -80,7 +80,7 @@ class MockHttpRequest(HttpRequest):
         scope=MOCK_SCOPE
     ):
         assert method in METHODS
-        receive = get_mock_receiver(event, body)
+        receive = _get_mock_receiver(event, body)
         scope['path'] = url
         scope['raw_path'] = url
         scope['method'] = method
