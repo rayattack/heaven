@@ -1,5 +1,6 @@
 class Context():
-    def __init__(self):
+    def __init__(self, application):
+        self._application = application
         self._data = {}
 
     def keep(self, key, value):

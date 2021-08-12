@@ -211,15 +211,15 @@ class Routes(object):
         for route in routes:...
         return None, None
 
-    async def handle(self, scope, receive, send, metadata=None):
+    async def handle(self, scope, receive, send, metadata=None, application=None):
         """
         Traverse internal route tree and use appropriate method
         """
         body = await receive()
 
         r = HttpRequest(scope, body, receive, metadata)
-        w = ResponseWriter(scope)
-        c = Context()
+        w = ResponseWriter()
+        c = Context(application)
 
         method = scope.get('method')
         matched = None
@@ -306,7 +306,7 @@ class Router(object):
 
         metadata = preprocessor(scope)
         engine = self.subdomains.get(metadata[0]) or self.subdomains.get('*')
-        response = await engine.handle(scope, receive, send, metadata)
+        response = await engine.handle(scope, receive, send, metadata, self)
         await send({
             'type': 'http.response.start',
             'headers': response.headers,

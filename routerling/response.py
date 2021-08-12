@@ -44,7 +44,7 @@ class ResponseWriter():
     def _(self, payload: str):
         self._abort = True
         self._body = payload.encode()
-    
+
     @abort.register(int)
     @abort.register(float)
     def _(self, payload):
