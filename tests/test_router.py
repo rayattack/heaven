@@ -13,11 +13,17 @@ from .test_request import one, two, three
 
 class RoutesTest(TestCase):
     def setUp(self) -> None:
+        self.routes = Routes()
         self.router = Router()
+        self.router.GET('/v1/customers/:id/receipts', one)
+        self.engine = self.router.subdomains.get('www')
         return super().setUp()
     
+    def test_routes_cache(self):
+        self.assertIsNotNone(self.engine.cache['GET']['/v1/customers/:id/receipts'])
+
     def test_add_handler(self):
-        pass
+        self.routes.afters
 
     def test_remove_handler(self):
         pass

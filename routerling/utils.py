@@ -2,13 +2,20 @@ from ipaddress import ip_address
 
 from .constants import DEFAULT
 
-    
-def preprocessor(self, scope):
-    headers = {}
 
+b_or_s = lambda x: x.decode() if isinstance(x, bytes) else x
+
+    
+def preprocessor(scope):
+    headers = {}
     for header in scope.get('headers'):
-        key, value = header
-        headers[key.decode()] = value.decode()
+        key, value = [b_or_s(e) for e in header]
+        exists = headers.get(key)
+        if exists:
+            if isinstance(exists, list): exists.append(value)
+            else: exists = [exists, value]
+        else: exists = value
+        headers[key] = exists
 
     host: bytes = headers.get('host')
     if host.startswith('http://'): host = host.replace('http://', '')

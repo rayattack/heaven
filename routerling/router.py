@@ -2,13 +2,13 @@ import sys
 
 from collections import deque
 from inspect import iscoroutinefunction
-from ipaddress import ip_address
 
 from uvicorn import run
 from typing import Callable, Generic, TypeVar
 
 from .constants import (
     CONNECT,
+    DEFAULT,
     DELETE,
     GET,
     HEAD,
@@ -32,6 +32,7 @@ from .constants import (
 )
 
 from .errors import AbortException, SubdomainError, UrlDuplicateError, UrlError
+from .utils import preprocessor
 from .request import HttpRequest
 from .response import ResponseWriter
 from .context import Context
@@ -42,8 +43,6 @@ methods = ['get', 'post', 'put', 'delete', 'connect', 'head', 'options', 'patch'
 
 Handler = Callable[[HttpRequest, ResponseWriter], object]
 
-
-DEFAULT = 'www'
 MARK_PRESENT = 'yes father... (RIP Rev. Angus Fraser...)'
 SEPARATOR = INDEX = "/"
 
@@ -138,6 +137,11 @@ class Routes(object):
         self.routes = {}
 
     def add(self, method: str, route: str, handler: Callable):
+        """
+        method: one of POST, GET, OPTIONS... etc - i.e. the HTTP method
+        route: the route url/endpoint
+        handler: function corresponding to the signature of a routerling handler
+        """
         # ensure the method and route combo has not been already registered
         try: assert self.cache.get(method, {}).get(route) is None
         except AssertionError: raise UrlDuplicateError
@@ -300,7 +304,7 @@ class Router(object):
         try: await self.finalize()
         except: notify()
 
-        metadata = self.__subdomain__(scope)
+        metadata = preprocessor(scope)
         engine = self.subdomains.get(metadata[0]) or self.subdomains.get('*')
         response = await engine.handle(scope, receive, send, metadata)
         await send({
@@ -312,24 +316,6 @@ class Router(object):
             'type': 'http.response.body',
             'body': response.body
         })
-    
-    def __subdomain__(self, scope):
-        headers = {}
-
-        for header in scope.get('headers'):
-            key, value = header
-            headers[key.decode()] = value.decode()
-            
-        host: bytes = headers.get('host')
-        if host.startswith('http://'): host = host.replace('http://', '')
-        else: host = host.replace('https://', '')
-        host = host.rsplit(':')[0]
-        try: ip_address(host)
-        except: pass
-        else: return DEFAULT, headers
-        parts = host.split('.', 2)
-        has_subdomain = len(parts) > 2
-        return (parts[0], headers,) if has_subdomain else (DEFAULT, headers,)
 
     def abettor(self, method: str, route: str, handler: Handler, subdomain=DEFAULT):
         if not route.startswith('/'): raise UrlError
