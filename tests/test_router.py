@@ -20,7 +20,7 @@ class RoutesTest(TestCase):
         self.router.GET('/v1/customers', three)
         self.engine = self.router.subdomains.get('www')
         return super().setUp()
-    
+
     def test_add(self):
         self.assertRaises(UrlDuplicateError, self.engine.add, 'GET', '/v1/customers/:id/receipts', one)
         root_route_node = self.engine.routes.get('GET')
@@ -63,6 +63,9 @@ class RoutesTest(TestCase):
         self.assertIsNone(customers_route_node.handler)
         self.assertIsNone(customers_route_node.route)
         self.assertFalse(self.engine.cache['GET']['/v1/customers'])
+    
+    def test_match(self):
+        self.engine.routes.get('GET').match
 
 
 class RouterTest(TestCase):
@@ -113,17 +116,6 @@ class RouterTest(TestCase):
 
     def test_wildcard_route(self):
         self.router.POST('/*', one)
-
-    def test_parameterized_route(self):
-        # TODO: Implement test for this
-        pass
-
-    def test_function_matched_correctly_to_route(self):
-        # TODO: Implement test for this
-        pass
-
-    def test_notify_on_error(self):
-        pass
 
     def test_is_paramx(self):
         right = _isparamx(':ab')

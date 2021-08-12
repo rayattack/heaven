@@ -66,21 +66,6 @@ class Route(object):
         self.handler = handler
         self.children = {}
 
-    def add(self, pathstring: deque, handler):
-        # We can do this with confidence because we use cache to ensure url mask not used twice
-        node = self
-        while pathstring:
-            route = pathstring.popleft()
-            url, parameterized = _isparamx(route)
-            current_node = node.children.get(route)
-            if not current_node:
-                url, func = None, None
-                current_node = Route(url, func)
-                node.children[route] = current_node
-            node = current_node
-            node.parameterized = parameterized
-        node.handler = handler
-
     def match(self, routes: deque, r: HttpRequest):
         matched: str = None
         route_at_deviation = None
