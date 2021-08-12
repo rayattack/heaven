@@ -14,6 +14,7 @@ from .constants import (
     HEAD,
     INITIALIZATION_MESSAGE,
     MESSAGE_NOT_FOUND,
+    METHODS,
     METHOD_CONNECT,
     METHOD_DELETE,
     METHOD_GET,
@@ -47,14 +48,11 @@ MARK_PRESENT = 'yes father... (RIP Rev. Angus Fraser...)'
 SEPARATOR = INDEX = "/"
 
 
-def isparamx(r: str):
+def _isparamx(r: str):
     return (':', r[1:],) if r.startswith(':') else (r, None,)
 
-def isvariable(r: str):
-    newr = ':' if r.startswith(':') else r
-    return newr, newr != r or r == '*'
 
-def notify(width=80):
+def _notify(width=80):
     drawline = lambda: print('=' * width)
     drawline()
     print('NOTE: The `LAST` initializer func above failed and prevented others from running')
@@ -73,7 +71,7 @@ class Route(object):
         node = self
         while pathstring:
             route = pathstring.popleft()
-            url, parameterized = isparamx(route)
+            url, parameterized = _isparamx(route)
             current_node = node.children.get(route)
             if not current_node:
                 url, func = None, None
@@ -167,17 +165,17 @@ class Routes(object):
         stop_at = len(routes) - 1
 
         for index, routerling in enumerate(routes):
-            routerling, parameterized = isparamx(routerling)
-            new_route_node = route_node.children.get(routerling)
+            _routerling, _parameterized = _isparamx(routerling)
+            new_route_node = route_node.children.get(_routerling)
             if not new_route_node:
                 new_route_node = Route(None, None)
-                route_node.children[routerling] = new_route_node
+                route_node.children[_routerling] = new_route_node
             
             route_node = new_route_node
-            route_node.parameterized = parameterized
+            route_node.parameterized = _parameterized
 
             if index == stop_at:
-                assert route_node.handler is None, f'Handler already registered for route: ${routerling}'
+                assert route_node.handler is None, f'Handler already registered for route: ${_routerling}'
                 route_node.route = route
                 route_node.handler = handler
     
@@ -269,13 +267,30 @@ class Routes(object):
         # increase the time it takes before the response is released to the network
         return w
     
-    def remove(self, url: str):
+    def remove(self, method: str, route: str):
         """Remove the URI provided from the url path mapping tree.
+        NOTE: Only the handler and the route not the children
         1. Check if the uri does exists
         2. Remove the func handlers already attached to run for uri match
         3: Right here - right now, Surpass your limits like Asta... 
         """
-        pass
+        assert method in METHODS
+        route_node = self.routes.get(method)
+        if not route_node: return
+        if not route_node.children: return
+
+        routes = route.strip(SEPARATOR).split(SEPARATOR)
+        stop_at = len(routes) - 1
+        for index, routerling in enumerate(routes):
+            _routerling, _parameterized = _isparamx(routerling)
+            route_node = route_node.children.get(_routerling)
+            if not route_node:
+                return
+            if index == stop_at:
+                route_node.route = None
+                route_node.handler = None
+                self.cache[method][route] = None
+
 
     async def xhooks(self, hookstore, matched, r: HttpRequest, w: ResponseWriter, c: Context):
         # traverse the before tree - changed to tree to match routes tree
@@ -302,7 +317,7 @@ class Router(object):
 
     async def __call__(self, scope, receive, send):
         try: await self.finalize()
-        except: notify()
+        except: _notify()
 
         metadata = preprocessor(scope)
         engine = self.subdomains.get(metadata[0]) or self.subdomains.get('*')

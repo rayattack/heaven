@@ -1,7 +1,8 @@
 from unittest import TestCase
+from unittest.mock import Mock
 
 from routerling import Router
-from routerling.router import DEFAULT, Routes
+from routerling.router import DEFAULT, Routes, _isparamx
 from routerling.errors import SubdomainError, UrlDuplicateError, UrlError
 from routerling.response import ResponseWriter
 from routerling.request import HttpRequest
@@ -16,17 +17,52 @@ class RoutesTest(TestCase):
         self.routes = Routes()
         self.router = Router()
         self.router.GET('/v1/customers/:id/receipts', one)
+        self.router.GET('/v1/customers', three)
         self.engine = self.router.subdomains.get('www')
         return super().setUp()
     
+    def test_add(self):
+        self.assertRaises(UrlDuplicateError, self.engine.add, 'GET', '/v1/customers/:id/receipts', one)
+        root_route_node = self.engine.routes.get('GET')
+        self.assertIsNone(root_route_node.route)
+        self.assertFalse(root_route_node.parameterized)
+
+        v1_route_node = root_route_node.children.get('v1')
+        self.assertIsNotNone(v1_route_node)
+        self.assertIsNone(v1_route_node.route)
+        self.assertIsNone(v1_route_node.handler)
+        self.assertIsNone(v1_route_node.parameterized)
+
+        customers_route_node = v1_route_node.children.get('customers')
+        self.assertIsNotNone(customers_route_node)
+        self.assertEqual(customers_route_node.route, '/v1/customers')
+        self.assertEqual(customers_route_node.handler, three)
+        self.assertIsNone(customers_route_node.parameterized)
+    
+        id_route_node = customers_route_node.children.get(':')
+        self.assertIsNotNone(id_route_node)
+        self.assertTrue(id_route_node.parameterized)
+        self.assertEqual(id_route_node.parameterized, 'id')
+        
+        receipts_route_node = id_route_node.children.get('receipts')
+        self.assertIsNotNone(receipts_route_node)
+        self.assertEqual(receipts_route_node.handler, one)
+
     def test_routes_cache(self):
         self.assertIsNotNone(self.engine.cache['GET']['/v1/customers/:id/receipts'])
 
-    def test_add_handler(self):
-        self.routes.afters
-
     def test_remove_handler(self):
-        pass
+        root_route_node = self.engine.routes.get('GET')
+        v1_route_node = root_route_node.children.get('v1')
+        customers_route_node = v1_route_node.children.get('customers')
+
+        self.assertEqual(customers_route_node.handler, three)
+        self.assertEqual(customers_route_node.route, '/v1/customers')
+
+        self.engine.remove('GET', '/v1/customers')
+        self.assertIsNone(customers_route_node.handler)
+        self.assertIsNone(customers_route_node.route)
+        self.assertFalse(self.engine.cache['GET']['/v1/customers'])
 
 
 class RouterTest(TestCase):
@@ -85,3 +121,15 @@ class RouterTest(TestCase):
     def test_function_matched_correctly_to_route(self):
         # TODO: Implement test for this
         pass
+
+    def test_notify_on_error(self):
+        pass
+
+    def test_is_paramx(self):
+        right = _isparamx(':ab')
+        wrong = _isparamx('ab')
+        self.assertIsInstance(right, tuple)
+        self.assertEqual(right[0], ':')
+        self.assertEqual(right[1], 'ab')
+        self.assertEqual(wrong[0], 'ab')
+        self.assertEqual(wrong[1], None)
