@@ -20,14 +20,14 @@ consistent across the 3 different supported languages [Golang, Python, Typescrip
 from routerling import Context, HttpRequest, ResponseWriter, Router
 from logging import log
 
-def get_customer_orders(r: HttpRequest, w: ReponseWriter, s: State):
+def get_customer_orders(r: HttpRequest, w: ReponseWriter, c: Context):
     w.headers = "go-go-gadget", ""
     w.body = '{customer: {customer_id}, orders: []}'.format(r.params.get('id'))
 
-def change_headers(r: HttpRequest, w: ResponseWriter, s: State):
+def change_headers(r: HttpRequest, w: ResponseWriter, c: Context):
     w.headers = "go-go-gadget", "i was changed after..."
 
-def create_customer(r: HttpRequest, w: ResponseWriter, s: State):
+def create_customer(r: HttpRequest, w: ResponseWriter, c: Context):
     print(r.body)
     w.status = 201
     w.body = '{id: 13}'

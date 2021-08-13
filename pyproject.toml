@@ -8,6 +8,8 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.6"
+uvicorn = "^0.14.0"
+
 
 [tool.poetry.dev-dependencies]
 
