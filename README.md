@@ -25,7 +25,7 @@ def get_customer_orders(r: HttpRequest, w: ReponseWriter, c: Context):
     w.body = '{customer: {customer_id}, orders: []}'.format(r.params.get('id'))
 
 def change_headers(r: HttpRequest, w: ResponseWriter, c: Context):
-    w.headers = "go-go-gadget", "i was changed after..."
+    w.headers = "go-go-gadget", "i was included after..."
 
 def create_customer(r: HttpRequest, w: ResponseWriter, c: Context):
     print(r.body)
@@ -71,7 +71,7 @@ uvicorn app:router
     > Dictionary containing parts of the url that matched your route parameters i.e. `/customers/:id/orders` will
     > return `{'id': 45}` for url `/customers/45/orders`.
     ```py
-    body: str = r.body
+    identifier = r.params.get('id')
     ```
 
 &nbsp;
@@ -86,6 +86,10 @@ uvicorn app:router
     ```py
     w.abort('This is the body/payload i want to abort with')
     return
+
+    # or
+
+    return w.abort('This is the body/payload i want to abort with')  #abort registers then returns None
     ```
 
 - **response.body**
@@ -108,8 +112,66 @@ uvicorn app:router
 
 ## Context Object
 
-> Documentation coming soon
+- **context.keep**
+    > Used to store values across different request handlers for any given request lifecylce i.e. from the time
+    > a client browser hits your server (request start) to  the time a response is sent back to client (request end).
+    >
+    > &nbsp;
+    >
+    > **Sample Use Case**
+    >
+    > Imagine you want to use the amazing [**jsonschema**](https://pypi.org/project/jsonschema/) library to
+    > validate json request payloads received on every **POST**, **PATCH**, or **PUT** request from your users.
+    > One way to achieve this is to decorate your request handlers and abort the request if the json payload does not
+    > match your schema validation constraints.
+    > 
+    > _The code snippet below shows a sample implementation for such a use case for reference_.
 
+
+    ```py
+    from http import HttpStatus as status
+    from json import dumps, loads  # consider using ujson in production apps
+
+    from jsonschema import validate, draft7_format_checker
+    from jsonschema.exceptions import ValidationError
+
+    def expects(schema):
+        def proxy(func):
+            @wraps(func)
+            async def delegate(r: HttpRequest, w: ResponseWriter, c: Context):
+                body = loads(r.body)
+                try: validate(instance=body, schema=schema, format_checker=draft7_format_checker)
+                except ValidationError as exc:
+                    w.status = status.NOT_ACCEPTABLE
+                    w.headers = 'content-type', 'application/json'
+                    return w.abort(dumps({'message': exc.message}))
+
+                # Here we call Context.keep('key', value) to store values across handlers for the request lifecycle
+                # -------------------------------------------------------------------------------------------------
+                for k,v in body.items(): c.keep(k, v)
+                return await func(r, w, c)
+            return delegate
+        return proxy
+
+
+    @expects({
+        'type': 'object',
+        'properties': {
+            'username': {'type': 'string'}
+            'password': {'type': 'string', 'minLength': 8}
+        }
+    })
+    async def handler(r: HttpRequest, w: ResponseWriter, c: Context):
+        print(c.username, " you can do this because the @expects :func: calls c.keep('username', value)")
+        print(c.password, " ^^^ same for this")
+        w.body = dumps({'username': username, 'password': password})
+    ```
+
+- **context._application** 
+    > Retrieves the root _Routerling_ **app** instance (root router instance), after all you are an
+    > adult when it comes to coding ;-)
+    >
+    > Newly introduced in routerling **version 0.2.3**
 
 &nbsp;
 
@@ -117,4 +179,4 @@ uvicorn app:router
 
 # Socket Connections
 
-> Documentation coming soon
+> Implementation &amp; Documentation coming soon
