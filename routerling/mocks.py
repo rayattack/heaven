@@ -77,7 +77,7 @@ class MockHttpRequest(HttpRequest):
         headers=None,
         subdomain='www',
         event='http.request',
-        scope=MOCK_SCOPE
+        scope={**MOCK_SCOPE}
     ):
         assert method in METHODS
         receive = _get_mock_receiver(event, body)

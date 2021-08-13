@@ -106,9 +106,6 @@ class Route(object):
     def not_found(self, r: HttpRequest, w: ResponseWriter, c: Context):
         w.status = 404
         w.body = b'Not found'
-    
-    def retrieve(self, match: str):
-        pass
 
 
 class Routes(object):
@@ -253,12 +250,6 @@ class Routes(object):
         return w
     
     def remove(self, method: str, route: str):
-        """Remove the URI provided from the url path mapping tree.
-        NOTE: Only the handler and the route not the children
-        1. Check if the uri does exists
-        2. Remove the func handlers already attached to run for uri match
-        3: Right here - right now, Surpass your limits like Asta... 
-        """
         assert method in METHODS
         route_node = self.routes.get(method)
         if not route_node: return
@@ -275,7 +266,6 @@ class Routes(object):
                 route_node.route = None
                 route_node.handler = None
                 self.cache[method][route] = None
-
 
     async def xhooks(self, hookstore, matched, r: HttpRequest, w: ResponseWriter, c: Context):
         # traverse the before tree - changed to tree to match routes tree

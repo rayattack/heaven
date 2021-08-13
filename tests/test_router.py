@@ -1,15 +1,50 @@
 from collections import deque
+from json import dumps
 from typing import Callable
-from unittest import TestCase
+from unittest import TestCase, IsolatedAsyncioTestCase
 from unittest.mock import Mock
 
-from routerling import Router
+from routerling import Router, ResponseWriter, HttpRequest, Context
 from routerling.router import DEFAULT, Routes, _isparamx
 from routerling.errors import SubdomainError, UrlDuplicateError, UrlError
-from routerling.mocks import MockHttpRequest
+from routerling.mocks import MOCK_SCOPE, MockHttpRequest, _get_mock_receiver
 
 # internal test modules
-from .test_request import one, two, three
+from .test_request import one, two, three, four
+
+
+MOCK_BODY = {'success': True}
+
+
+def five(r: HttpRequest, w: ResponseWriter, c: Context):
+    w.body = dumps({**r.body, 'message': 'five...'})
+
+
+class AsyncRouterTet(IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        self.router = Router()
+        self.scope = {**MOCK_SCOPE, 'path': '/v1/customers'}
+        self.router.GET('/v1/customers', five)
+        self.engine = self.router.subdomains.get('www')
+        return super().setUp()
+    
+    async def test_handle(self):
+        receiver = _get_mock_receiver('http.request', MOCK_BODY)
+        metadata = 'www', None # i.e. subdomain and headers
+
+        # scope host is ignored for subdomain routing because we are calling the engine directly
+        response = await self.engine.handle(self.scope, receiver, None, metadata, self.router)
+        self.assertIsInstance(response, ResponseWriter)
+
+        expected_response_from_five = dumps({**MOCK_BODY, 'message': 'five...'}).encode()
+        self.assertEqual(response.body, expected_response_from_five)
+    
+    async def test_call(self):
+        async def send(data):
+            return data
+        receiver = _get_mock_receiver('http.request', MOCK_BODY)
+        self.scope['headers'] = []
+        result = await self.router(self.scope, receiver, send)
 
 
 class RoutesTest(TestCase):
@@ -66,18 +101,37 @@ class RoutesTest(TestCase):
     
     def test_match(self):
         xsplit = lambda x: x.strip('/').split('/')
-        url_q1 = deque(xsplit('/v1/customers'))
-        url_q2 = deque(xsplit('/v1/customers/34/receipts'))
 
-        rv = self.engine.routes.get('GET').match(url_q1, MockHttpRequest('/v1/customers'))
-        self.assertIsInstance(rv, tuple)
+        # first match params
+        url1 = '/v1/customers'
+        url_q1 = deque(xsplit(url1))
+        req1 = MockHttpRequest(url1)
 
-        route, handler = rv
+        # second match params
+        url2 = '/v1/customers/34/receipts'
+        url_q2 = deque(xsplit(url2))
+        req2 = MockHttpRequest(url2)
+
+        # test first match params
+        route, handler = self.engine.routes.get('GET').match(url_q1, req1)
         self.assertIsInstance(route, str)
         self.assertEqual(handler, three)
 
-        #TODO: Continue testing match with match for : and * or for when not matched
-        return
+        # test second match params
+        route, handler = self.engine.routes.get('GET').match(url_q2, req2)
+        self.assertEqual(req2.params.get('id'), '34')
+    
+    def test_afters(self):
+        self.router.AFTER('/v1/customers', three)
+        afters = self.engine.afters.get('/v1/customers')
+        self.assertIsInstance(afters, list)
+        self.assertTrue(three in afters)
+    
+    def test_befores(self):
+        self.router.BEFORE('/v1/customers', three)
+        befores = self.engine.befores.get('/v1/customers')
+        self.assertIsInstance(befores, list)
+        self.assertTrue(three in befores)
 
 
 class RouterTest(TestCase):

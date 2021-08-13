@@ -18,6 +18,7 @@ def preprocessor(scope):
         headers[key] = exists
 
     host: bytes = headers.get('host')
+    if not host: return DEFAULT, headers
     if host.startswith('http://'): host = host.replace('http://', '')
     else: host = host.replace('https://', '')
     host = host.rsplit(':')[0]
