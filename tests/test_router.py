@@ -2,10 +2,10 @@ from collections import deque
 from json import dumps
 from typing import Callable
 from unittest import TestCase, IsolatedAsyncioTestCase
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from routerling import Router, ResponseWriter, HttpRequest, Context
-from routerling.router import DEFAULT, Routes, _isparamx
+from routerling.router import DEFAULT, Routes, _isparamx, _notify
 from routerling.errors import SubdomainError, UrlDuplicateError, UrlError
 from routerling.mocks import MOCK_SCOPE, MockHttpRequest, _get_mock_receiver
 
@@ -14,6 +14,7 @@ from .test_request import one, two, three, four
 
 
 MOCK_BODY = {'success': True}
+MOCK_BODY_EXPECTED = {**MOCK_BODY, 'message': 'five...'}
 
 
 def five(r: HttpRequest, w: ResponseWriter, c: Context):
@@ -36,15 +37,47 @@ class AsyncRouterTet(IsolatedAsyncioTestCase):
         response = await self.engine.handle(self.scope, receiver, None, metadata, self.router)
         self.assertIsInstance(response, ResponseWriter)
 
-        expected_response_from_five = dumps({**MOCK_BODY, 'message': 'five...'}).encode()
+        expected_response_from_five = dumps(MOCK_BODY_EXPECTED).encode()
         self.assertEqual(response.body, expected_response_from_five)
     
-    async def test_call(self):
-        async def send(data):
-            return data
+    @patch('routerling.router._notify')
+    async def test_call(self, _notify):
+        mock = Mock()
+
+        async def send(data): return mock(data)
+        def exception_raiser(): raise Exception
+
+        self.router.ONCE(exception_raiser)
+
         receiver = _get_mock_receiver('http.request', MOCK_BODY)
         self.scope['headers'] = []
         result = await self.router(self.scope, receiver, send)
+        self.assertEqual(mock.call_count, 2)
+        expected_response = dumps(MOCK_BODY_EXPECTED).encode()
+        mock.assert_called_with({'type': 'http.response.body', 'body': expected_response})
+
+        _notify.assert_called_once()
+    
+    async def test_finalize(self):
+        a, b, c = Mock(), Mock(), Mock()
+        a.__name__ = 'a'
+        b.__name__ = 'b'
+        c.__name__ = 'c'
+        self.router.ONCE(a)
+        self.router.ONCE(b)
+        self.router.ONCE(c)
+
+        self.assertEqual(len(self.router.initializers), 3)
+
+        # now call finalize multiple times
+        await self.router.finalize()
+        await self.router.finalize()
+        await self.router.finalize()
+
+        # ensure one time functions were only called once
+        a.assert_called_once()
+        b.assert_called_once()
+        c.assert_called_once()
 
 
 class RoutesTest(TestCase):
@@ -53,13 +86,15 @@ class RoutesTest(TestCase):
         self.router = Router()
         self.router.GET('/v1/customers/:id/receipts', one)
         self.router.GET('/v1/customers', three)
+        self.router.GET('/v1/customers/*', four)
+        self.router.GET('/', four)
         self.engine = self.router.subdomains.get('www')
         return super().setUp()
 
     def test_add(self):
         self.assertRaises(UrlDuplicateError, self.engine.add, 'GET', '/v1/customers/:id/receipts', one)
         root_route_node = self.engine.routes.get('GET')
-        self.assertIsNone(root_route_node.route)
+        self.assertEqual(root_route_node.handler, four)
         self.assertFalse(root_route_node.parameterized)
 
         v1_route_node = root_route_node.children.get('v1')
@@ -112,6 +147,11 @@ class RoutesTest(TestCase):
         url_q2 = deque(xsplit(url2))
         req2 = MockHttpRequest(url2)
 
+        # second match params
+        url3 = '/v1/customers/34/receipts/45'
+        url_q3 = deque(xsplit(url3))
+        req3 = MockHttpRequest(url3)
+
         # test first match params
         route, handler = self.engine.routes.get('GET').match(url_q1, req1)
         self.assertIsInstance(route, str)
@@ -120,6 +160,11 @@ class RoutesTest(TestCase):
         # test second match params
         route, handler = self.engine.routes.get('GET').match(url_q2, req2)
         self.assertEqual(req2.params.get('id'), '34')
+
+        # test third match params
+        route, handler = self.engine.routes.get('GET').match(url_q3, req3)
+        self.assertEqual(route, '/v1/customers/*')
+        self.assertEqual(handler, four)
     
     def test_afters(self):
         self.router.AFTER('/v1/customers', three)
@@ -137,6 +182,7 @@ class RoutesTest(TestCase):
 class RouterTest(TestCase):
     def setUp(self) -> None:
         self.router = Router()
+        self.engine = self.router.subdomains.get(DEFAULT)
         return super().setUp()
 
     def test_required_leading_slash(self):
@@ -191,3 +237,17 @@ class RouterTest(TestCase):
         self.assertEqual(right[1], 'ab')
         self.assertEqual(wrong[0], 'ab')
         self.assertEqual(wrong[1], None)
+    
+    def test_methods(self):
+        self.router.GET('/get', one)
+        self.router.DELETE('/delete', one)
+        self.router.TRACE('/trace', one)
+        self.router.PUT('/put', one)
+        self.router.POST('/post', one)
+        self.router.PATCH('/patch', one)
+        self.router.OPTIONS('/options', one)
+        self.router.CONNECT('/connect', one)
+        self.router.HTTP('/round-robin', one)
+        for method in ['GET', 'PUT', 'PATCH', 'POST', 'DELETE', 'TRACE', 'OPTIONS']:
+            self.assertIsNotNone(self.engine.routes.get(method))
+            self.assertIsNotNone(self.engine.cache[method]['/round-robin'])

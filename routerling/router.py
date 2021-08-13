@@ -52,7 +52,7 @@ def _isparamx(r: str):
     return (':', r[1:],) if r.startswith(':') else (r, None,)
 
 
-def _notify(width=80):
+def _notify(width=80): #pragma: nocover
     drawline = lambda: print('=' * width)
     drawline()
     print('NOTE: The `LAST` initializer func above failed and prevented others from running')
@@ -216,7 +216,7 @@ class Routes(object):
             return w
 
         route = scope.get('path')
-        if route == SEPARATOR:
+        if route == SEPARATOR: #pragma: nocover
             matched = route_node.route # same as = SEPARATOR
             handler = route_node.handler
         else:
@@ -317,14 +317,14 @@ class Router(object):
     def AFTER(self, route: str, handler: Callable, subdomain=DEFAULT):
         if not route.startswith('/'): raise UrlError(URL_ERROR_MESSAGE)
         engine = self.subdomains.get(subdomain)
-        if not isinstance(engine, Routes):
+        if not isinstance(engine, Routes): #pragma: nocover
             raise NameError('Subdomain does not exist - register subdomain on router first')
         engine.after = route, handler
 
     def BEFORE(self, route: str, handler: Callable, subdomain=DEFAULT):
         if not route.startswith('/'): raise UrlError(URL_ERROR_MESSAGE)
         engine = self.subdomains.get(subdomain)
-        if not isinstance(engine, Routes):
+        if not isinstance(engine, Routes): #pragma: nocover
             raise NameError('Subdomain does not exist - register subdomain on router first')
         engine.before = route, handler
 
@@ -371,8 +371,8 @@ class Router(object):
             if iscoroutinefunction(initializer): await initializer()
             else: initializer()
 
-    def listen(self, host='localhost', port='8701', debug=DEFAULT):
-        # implement development server? uvicorn already present as dependency so not in python library
+    def listen(self, host='localhost', port='8701', debug=DEFAULT): #pragma: nocover
+        # repurpose this for websockets?
         pass
 
     def subdomain(self, subdomain: str):
