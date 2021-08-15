@@ -52,10 +52,10 @@ def _isparamx(r: str):
     return (':', r[1:],) if r.startswith(':') else (r, None,)
 
 
-def _notify(width=80): #pragma: nocover
+def _notify(width=80, event='startup'): #pragma: nocover
     drawline = lambda: print('=' * width)
     drawline()
-    print('NOTE: The `LAST` initializer func above failed and prevented others from running')
+    print(f'NOTE: The `LAST` {event} func above failed and prevented others from running')
     drawline()
 
 
@@ -86,7 +86,7 @@ class Route(object):
                     continue
 
                 wildcard = node.children.get('*')
-                if wildcard:
+                if wildcard:  #pragma: nocover
                     r.params = '*', '/'.join([route, *routes])
                     return wildcard.route, wildcard.handler
 
@@ -287,12 +287,23 @@ class Router(object):
     def __init__(self):
         self.finalized = False
         self.initializers = set()
+        self.deinitializers = set()
         self.subdomains = {}
         self.subdomains[DEFAULT] = Routes()
+        self.buckets = {}
 
     async def __call__(self, scope, receive, send):
-        try: await self.finalize()
-        except: _notify()
+        if scope['type'] == 'lifespan':
+            while True:
+                message = await receive()
+                if message['type'] == 'lifespan.startup':
+                    try: await self._register()
+                    except: _notify()
+                    await send({'type': 'lifespan.startup.complete'})
+                elif message['type'] == 'lifespan.shutdown':
+                    try: await self._unregister()
+                    except: _notify(event='shutdown')
+                    await send({'type': 'lifespan.shutdown.complete'})
 
         metadata = preprocessor(scope)
         engine = self.subdomains.get(metadata[0]) or self.subdomains.get('*')
@@ -355,21 +366,59 @@ class Router(object):
     
     def TRACE(self, route: str, handler: Callable, subdomain=DEFAULT):
         self.abettor(METHOD_TRACE, route, handler, subdomain)
-    
-    def ONCE(self, func):
-        self.initializers.add(func)
-    
-    async def finalize(self):
-        if self.finalized: return
-        self.finalized = True
-        print(INITIALIZATION_MESSAGE)
+
+    def ONCE(self, *args):
+        arguments = len(args)
+        error_message = 'ONCE requires a callable argument as default'
+        help_message = 'If 2 arguments provided: first: str = `startup` or `shutdown` AND second: Callable'
+        try: assert arguments <= 2
+        except: raise TypeError('ONCE function received more than 2 arguments')
+
+        if arguments == 1:
+            first = args[0]
+            try: assert isinstance(first, Callable)
+            except AssertionError: raise TypeError(error_message)
+            self.initializers.add(first)
+        else:
+            first, second = args
+
+            try: assert first in ['startup', 'shutdown']
+            except AssertionError: raise ValueError(help_message)
+
+            try: assert isinstance(second, Callable)
+            except AssertionError: raise TypeError(error_message)
+
+            if first == 'startup': self.initializers.add(second)
+            else: self.deinitializers.add(second)
+
+    async def _register(self):
         i = len(self.initializers)
         while self.initializers:
             initializer, c = self.initializers.pop(), len(self.initializers)
             index = i - c
             print(f'({index}): ', initializer.__name__, '\n')
-            if iscoroutinefunction(initializer): await initializer()
-            else: initializer()
+            if iscoroutinefunction(initializer): await initializer(self)
+            else: initializer(self)
+    
+    async def _unregister(self):
+        i = len(self.deinitializers)
+        while self.deinitializers:
+            deinitializer, c = self.deinitializers.pop(), len(self.deinitializers)
+            index = i - c
+            print(f'({index}): ', deinitializer.__name__, '\n')
+            if iscoroutinefunction(deinitializer): await deinitializer(self)
+            else: deinitializer(self)
+    
+    def keep(self, key, value):
+        self.buckets[key] = value
+
+    def unkeep(self, key):
+        value = self.buckets[key]
+        del self.buckets[key]
+        return value
+
+    def peek(self, key):
+        return self.buckets[key]
 
     def listen(self, host='localhost', port='8701', debug=DEFAULT): #pragma: nocover
         # repurpose this for websockets?

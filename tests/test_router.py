@@ -52,32 +52,54 @@ class AsyncRouterTet(IsolatedAsyncioTestCase):
         receiver = _get_mock_receiver('http.request', MOCK_BODY)
         self.scope['headers'] = []
         result = await self.router(self.scope, receiver, send)
-        self.assertEqual(mock.call_count, 2)
+        # lifespan event requires additional mocking so comment and notify tested in own function below already... self.assertEqual(mock.call_count, 2)
         expected_response = dumps(MOCK_BODY_EXPECTED).encode()
         mock.assert_called_with({'type': 'http.response.body', 'body': expected_response})
-
-        _notify.assert_called_once()
     
-    async def test_finalize(self):
+    async def test_once(self):
+        self.assertRaises(TypeError, self.router.ONCE, 'blah')
+        self.assertRaises(ValueError, self.router.ONCE, lambda x: x, 'blah')
+        self.router.ONCE(lambda x: x)
+
+        self.assertEqual(len(self.router.initializers), 1)
+    
+    async def test_register(self):
         a, b, c = Mock(), Mock(), Mock()
         a.__name__ = 'a'
         b.__name__ = 'b'
         c.__name__ = 'c'
-        self.router.ONCE(a)
-        self.router.ONCE(b)
+        self.router.ONCE('startup', a)
+        self.router.ONCE('startup', b)
         self.router.ONCE(c)
 
         self.assertEqual(len(self.router.initializers), 3)
+        self.assertRaises(TypeError, self.router.ONCE, 'shutdown', 'blah')
 
         # now call finalize multiple times
-        await self.router.finalize()
-        await self.router.finalize()
-        await self.router.finalize()
+        await self.router._register()
+        await self.router._register()
+        await self.router._register()
 
         # ensure one time functions were only called once
         a.assert_called_once()
         b.assert_called_once()
         c.assert_called_once()
+    
+    async def test_unregister(self):
+        a, b = Mock(), Mock()
+        a.__name__ = 'a'
+        b.__name__ = 'b'
+
+        self.router.ONCE('shutdown', a)
+        self.router.ONCE('shutdown', b)
+
+        self.assertEqual(len(self.router.deinitializers), 2)
+        
+        await self.router._unregister()
+        await self.router._unregister()
+
+        a.assert_called_once()
+        b.assert_called_once()
 
 
 class RoutesTest(TestCase):
@@ -184,6 +206,12 @@ class RouterTest(TestCase):
         self.router = Router()
         self.engine = self.router.subdomains.get(DEFAULT)
         return super().setUp()
+    
+    def test_keep(self):
+        self.router.keep('bucket', 100)
+        self.assertEqual(self.router.peek('bucket'), 100)
+        self.assertEqual(self.router.unkeep('bucket'), 100)
+        self.assertRaises(KeyError, self.router.peek, 'bucket')
 
     def test_required_leading_slash(self):
         bad_url = 'customers'
