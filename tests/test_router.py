@@ -5,7 +5,7 @@ from unittest import TestCase, IsolatedAsyncioTestCase
 from unittest.mock import Mock, patch
 
 from routerling import Router, ResponseWriter, HttpRequest, Context
-from routerling.router import DEFAULT, Routes, _isparamx, _notify
+from routerling.router import DEFAULT, Routes, _isparamx, _notify, _get_configuration
 from routerling.errors import SubdomainError, UrlDuplicateError, UrlError
 from routerling.mocks import MOCK_SCOPE, MockHttpRequest, _get_mock_receiver
 
@@ -21,7 +21,7 @@ def five(r: HttpRequest, w: ResponseWriter, c: Context):
     w.body = dumps({**r.body, 'message': 'five...'})
 
 
-class AsyncRouterTet(IsolatedAsyncioTestCase):
+class AsyncRouterTest(IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         self.router = Router()
         self.scope = {**MOCK_SCOPE, 'path': '/v1/customers'}
@@ -105,7 +105,7 @@ class AsyncRouterTet(IsolatedAsyncioTestCase):
 class RoutesTest(TestCase):
     def setUp(self) -> None:
         self.routes = Routes()
-        self.router = Router()
+        self.router = Router({'DB': 'arangodb'})
         self.router.GET('/v1/customers/:id/receipts', one)
         self.router.GET('/v1/customers', three)
         self.router.GET('/v1/customers/*', four)
@@ -203,10 +203,20 @@ class RoutesTest(TestCase):
 
 class RouterTest(TestCase):
     def setUp(self) -> None:
-        self.router = Router()
+        self.router = Router({'DB': 'arangodb'})
         self.engine = self.router.subdomains.get(DEFAULT)
         return super().setUp()
     
+    def test_configurator_parser(self):
+        _config = {'DBNAME': 'postgres', 'SECRET_KEY': 'something hard to guess and not english'}
+        _configurator = lambda: {**_config, 'EXTRA': 'added in func configurator'}
+        self.assertEqual(_get_configuration(_config), _config)
+        self.assertEqual(_get_configuration(), {})
+        self.assertEqual('added in func configurator', _configurator()['EXTRA'])
+
+        self.assertEqual(self.router.CONFIG('DB'), 'arangodb')
+        self.assertRaises(KeyError, Router().CONFIG, 'DB')
+
     def test_keep(self):
         self.router.keep('bucket', 100)
         self.assertEqual(self.router.peek('bucket'), 100)

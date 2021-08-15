@@ -48,6 +48,12 @@ MARK_PRESENT = 'yes father... (RIP Rev. Angus Fraser...)'
 SEPARATOR = INDEX = "/"
 
 
+def _get_configuration(configurator=None):
+    if not configurator: return {}
+    if isinstance(configurator, dict): return configurator
+    return configurator()
+
+
 def _isparamx(r: str):
     return (':', r[1:],) if r.startswith(':') else (r, None,)
 
@@ -284,13 +290,14 @@ class Routes(object):
 
 
 class Router(object):
-    def __init__(self):
+    def __init__(self, configurator=None):
         self.finalized = False
         self.initializers = set()
         self.deinitializers = set()
         self.subdomains = {}
         self.subdomains[DEFAULT] = Routes()
-        self.buckets = {}
+        self._buckets = {}
+        self._configuration = _get_configuration(configurator)
 
     async def __call__(self, scope, receive, send):
         if scope['type'] == 'lifespan':
@@ -341,6 +348,9 @@ class Router(object):
 
     def CONNECT(self, route: str, handler: Callable[[HttpRequest, ResponseWriter], object], subdomain=DEFAULT):
         self.abettor(METHOD_CONNECT, route, handler, subdomain)
+
+    def CONFIG(self, config):
+        return self._configuration[config]
 
     def DELETE(self, route: str, handler: Callable, subdomain=DEFAULT):
         self.abettor(METHOD_DELETE, route, handler, subdomain)
@@ -410,15 +420,15 @@ class Router(object):
             else: deinitializer(self)
     
     def keep(self, key, value):
-        self.buckets[key] = value
+        self._buckets[key] = value
 
     def unkeep(self, key):
-        value = self.buckets[key]
-        del self.buckets[key]
+        value = self._buckets[key]
+        del self._buckets[key]
         return value
 
     def peek(self, key):
-        return self.buckets[key]
+        return self._buckets[key]
 
     def listen(self, host='localhost', port='8701', debug=DEFAULT): #pragma: nocover
         # repurpose this for websockets?
