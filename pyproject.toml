@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "routerling"
-version = "0.2.5"
+version = "0.2.6"
 description = "Extremely Stupid Simple, Blazing Fast, Get Out of your way immediately Microframework for building Python Web Applications."
 authors = ["Raymond Ortserga <ortserga@gmail.com>"]
 license = "MIT"
