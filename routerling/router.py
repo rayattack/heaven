@@ -428,7 +428,9 @@ class Router(object):
         return value
 
     def peek(self, key):
-        return self._buckets[key]
+        try: value = self._buckets[key]
+        except KeyError: return None
+        else: return value
 
     def listen(self, host='localhost', port='8701', debug=DEFAULT): #pragma: nocover
         # repurpose this for websockets?

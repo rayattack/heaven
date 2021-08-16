@@ -221,7 +221,15 @@ class RouterTest(TestCase):
         self.router.keep('bucket', 100)
         self.assertEqual(self.router.peek('bucket'), 100)
         self.assertEqual(self.router.unkeep('bucket'), 100)
-        self.assertRaises(KeyError, self.router.peek, 'bucket')
+        self.assertRaises(KeyError, self.router.unkeep, 'bucket')
+    
+    def test_peek(self):
+        self.assertIsNone(self.router.peek('blah'))
+        self.router.keep('blah', 'yimu')
+        self.assertEqual(self.router.peek('blah'), 'yimu')
+        self.assertEqual(self.router.peek('blah'), 'yimu')
+        self.assertEqual(self.router.unkeep('blah'), 'yimu')
+        self.assertIsNone(self.router.peek('blah'))
 
     def test_required_leading_slash(self):
         bad_url = 'customers'
