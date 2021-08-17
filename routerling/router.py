@@ -292,8 +292,8 @@ class Routes(object):
 class Router(object):
     def __init__(self, configurator=None):
         self.finalized = False
-        self.initializers = set()
-        self.deinitializers = set()
+        self.initializers = deque()
+        self.deinitializers = deque()
         self.subdomains = {}
         self.subdomains[DEFAULT] = Routes()
         self._buckets = {}
@@ -388,7 +388,7 @@ class Router(object):
             first = args[0]
             try: assert isinstance(first, Callable)
             except AssertionError: raise TypeError(error_message)
-            self.initializers.add(first)
+            self.initializers.append(first)
         else:
             first, second = args
 
@@ -398,13 +398,13 @@ class Router(object):
             try: assert isinstance(second, Callable)
             except AssertionError: raise TypeError(error_message)
 
-            if first == 'startup': self.initializers.add(second)
-            else: self.deinitializers.add(second)
+            if first == 'startup': self.initializers.append(second)
+            else: self.deinitializers.append(second)
 
     async def _register(self):
         i = len(self.initializers)
         while self.initializers:
-            initializer, c = self.initializers.pop(), len(self.initializers)
+            initializer, c = self.initializers.popleft(), len(self.initializers)
             index = i - c
             print(f'({index}): ', initializer.__name__, '\n')
             if iscoroutinefunction(initializer): await initializer(self)
@@ -413,7 +413,7 @@ class Router(object):
     async def _unregister(self):
         i = len(self.deinitializers)
         while self.deinitializers:
-            deinitializer, c = self.deinitializers.pop(), len(self.deinitializers)
+            deinitializer, c = self.deinitializers.popleft(), len(self.deinitializers)
             index = i - c
             print(f'({index}): ', deinitializer.__name__, '\n')
             if iscoroutinefunction(deinitializer): await deinitializer(self)
