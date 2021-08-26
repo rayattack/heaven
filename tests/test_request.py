@@ -39,6 +39,8 @@ class TestRequest(TestCase):
     
     def test_request_cookies(self):
         self.assertIsNotNone(self.request.cookies)
+        self.assertEqual(self.request.cookies.get('foo'), 'bar')
+        self.assertEqual(self.request.cookies.get('baz'), 'yimu')
     
     def test_preprocessor(self):
         results = preprocessor(mock_scope)

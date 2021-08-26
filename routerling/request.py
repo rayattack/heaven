@@ -2,6 +2,7 @@ class HttpRequest():
     def __init__(self, scope, body, receive, metadata=None):
         self._scope = scope
         self._body = body
+        self._cookies = None
         self._receive = receive
         self._subdomain, self._headers = metadata
         self._params = None
@@ -25,6 +26,18 @@ class HttpRequest():
     @property
     def body(self):
         return self._body.get('body')
+    
+    @property
+    def cookies(self):
+        if not self._cookies:
+            csd = {}
+            cookiestring = self.headers.get('cookie')
+            cookies = cookiestring.split('; ')
+            for cookie in cookies:
+                k, v = cookie.split('=')
+                csd[k] = v
+            self._cookies = csd
+        return self._cookies
 
     @property
     def headers(self):

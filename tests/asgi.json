@@ -29,6 +29,7 @@
         ["accept-encoding", "gzip, deflate, br"],
         ["accept-language", "en-US,en;q=0.9"],
         ["set-cookie", "i added this for testing manually and not from scope object"],
-        ["set-cookie", "according to the standard i read set-cookie can appear twice"]
+        ["set-cookie", "according to the standard i read set-cookie can appear twice"],
+        ["cookie", "foo=bar; baz=yimu; Authorization=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJvd25lciIGHesk328HNlcmdhQGdtYWlsLmNvbSJ9.wzG6mZs3gOEo2pyNSFQVCueRdwfng-h8oAxzq7Ne6_4"]
     ]
 }
