@@ -37,6 +37,9 @@ class TestRequest(TestCase):
     def test_request_body(self):
         self.assertEqual(self.request.body, mock_body.get('body'))
     
+    def test_request_cookies(self):
+        self.assertIsNotNone(self.request.cookies)
+    
     def test_preprocessor(self):
         results = preprocessor(mock_scope)
         self.assertIsInstance(results, tuple)

@@ -1,4 +1,4 @@
-import sys
+from http import HTTPStatus as status
 
 from collections import deque
 from inspect import iscoroutinefunction
@@ -314,16 +314,10 @@ class Router(object):
 
         metadata = preprocessor(scope)
         engine = self.subdomains.get(metadata[0]) or self.subdomains.get('*')
+
         response = await engine.handle(scope, receive, send, metadata, self)
-        await send({
-            'type': 'http.response.start',
-            'headers': response.headers,
-            'status': response.status
-        })
-        await send({
-            'type': 'http.response.body',
-            'body': response.body
-        })
+        await send({'type': 'http.response.start', 'headers': response.headers, 'status': response.status})
+        await send({'type': 'http.response.body', 'body': response.body})
 
     def abettor(self, method: str, route: str, handler: Handler, subdomain=DEFAULT):
         if not route.startswith('/'): raise UrlError
