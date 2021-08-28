@@ -32,6 +32,7 @@ class HttpRequest():
         if not self._cookies:
             csd = {}
             cookiestring = self.headers.get('cookie')
+            if not cookiestring: self._cookies = csd; return self._cookies
             cookies = cookiestring.split('; ')
             for cookie in cookies:
                 k, v = cookie.split('=')
