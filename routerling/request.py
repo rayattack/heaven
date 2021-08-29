@@ -10,8 +10,9 @@ class HttpRequest():
     def _parse_qs(self):
         qs = self._scope.get('query_string')
         qsd = {}
-        if not qs:
-            return qsd
+        if not qs: return qsd
+        else: qs = qs.decode()
+
         query_kv_pairs = qs.split('&')
         for kv_pair in query_kv_pairs:
             key, value = kv_pair.split('=')
