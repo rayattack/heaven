@@ -32,6 +32,7 @@ class ResponseWriter():
     def __init__(self):
         self._abort = False
         self._body = MESSAGE_NOT_FOUND.encode()
+        self._metadata = {}
         self._headers = []
         self._status = STATUS_NOT_FOUND
 
@@ -69,6 +70,15 @@ class ResponseWriter():
         _encode = lambda k: k.encode('utf-8') if isinstance(k, str) else k
         value = _encode(key), _encode(val)
         self._headers.append(value)
+    
+    @property
+    def metadata(self):
+        return self._metadata
+    
+    @metadata.setter
+    def metadata(self, value):
+        if not isinstance(value, dict): raise ValueError
+        self._metadata = value
 
     @property
     def status(self):

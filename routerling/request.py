@@ -11,7 +11,7 @@ class HttpRequest():
         qs = self._scope.get('query_string')
         qsd = {}
         if not qs: return qsd
-        else: qs = qs.decode()
+        else: qs = qs.decode() if isinstance(qs, bytes) else qs
 
         query_kv_pairs = qs.split('&')
         for kv_pair in query_kv_pairs:

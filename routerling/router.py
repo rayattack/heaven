@@ -317,7 +317,7 @@ class Router(object):
 
         response = await engine.handle(scope, receive, send, metadata, self)
         await send({'type': 'http.response.start', 'headers': response.headers, 'status': response.status})
-        await send({'type': 'http.response.body', 'body': response.body})
+        await send({'type': 'http.response.body', 'body': response.body, **response.metadata})
 
     def abettor(self, method: str, route: str, handler: Handler, subdomain=DEFAULT):
         if not route.startswith('/'): raise UrlError
