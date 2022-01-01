@@ -1,5 +1,6 @@
 class HttpRequest():
-    def __init__(self, scope, body, receive, metadata=None):
+    def __init__(self, scope, body, receive, metadata=None, application=None):
+        self._application = application
         self._scope = scope
         self._body = body
         self._cookies = None
@@ -23,6 +24,10 @@ class HttpRequest():
                 if isinstance(current_value, list): current_value.append(value)
                 else: qsd[key] = [current_value, value]
         return qsd
+
+    @property
+    def app(self):
+        return self._application
 
     @property
     def body(self):
