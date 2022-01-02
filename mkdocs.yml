@@ -1,0 +1,14 @@
+site_name: Routerling Docs
+site_url: https://rayattack.github.io/routerling
+nav:
+  - Home: default.md
+  - Quickstart: quickstart.md
+  - Samples: samples.md
+theme:
+  name: custommill
+  home: default
+  search_index_only: true
+  include_search_page: true
+  main_color: '#db6118'
+  gray: '#e0e0e0'
+  lighter_gray: '#eeeeee'
