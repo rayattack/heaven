@@ -31,8 +31,11 @@ def four(r: HttpRequest, w: ResponseWriter, c: Context):
 
 class TestRequest(TestCase):
     def setUp(self) -> None:
-        self.request = HttpRequest(mock_scope, mock_body, mock_receive, mock_metadata)
+        self.request = HttpRequest(mock_scope, mock_body, mock_receive, mock_metadata, Router())
         return super().setUp()
+
+    def test_request_app_instance(self):
+        self.assertIsInstance(self.request.app, Router)
     
     def test_request_body(self):
         self.assertEqual(self.request.body, mock_body.get('body'))
