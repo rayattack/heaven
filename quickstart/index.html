@@ -210,10 +210,10 @@ router = Router(function() -&gt; dict)
 <p><strong><code>router.AFTER(url: str, handler: func, subdomain: str)</code></strong> -&gt; Register a handler to run after all matches to the provided url i.e. <code>router.AFTER('/v1/*', log_visit_in_db)</code></p>
 </li>
 <li>
-<p><strong><code>router.BEFORE(url: str, handler: func, subdomain: str)</code></strong> -&gt; Get a config value from the global store/state register</p>
+<p><strong><code>router.BEFORE(url: str, handler: func, subdomain: str)</code></strong> -&gt; Register a handler to run before all matches to the provided url i.e. <code>router.BEFORE('/v1/*', check_json_signature)</code></p>
 </li>
 <li>
-<p><strong><code>router.CONFIG(url: str, handler: func, subdomain: str)</code></strong> -&gt; Get a config value from the <code>final readonly</code> app config set at router instantiation.</p>
+<p><strong><code>router.CONFIG(url: str, handler: func, subdomain: str)</code></strong> -&gt; Get a config value from the <code>immutable</code> app config set at router instantiation.</p>
 </li>
 <li>
 <p><strong><code>router.GET(url: str, handler: func, subdomain: str)</code></strong> -&gt; Registers your custom handlers/functions to be invoked when a url match is made. <code>POST</code>, <code>PUT</code>, <code>PATCH</code>, <code>DELETE</code> etc.
@@ -226,10 +226,10 @@ all work in similar fashion. The <code>subdomain</code> optional argument limits
 <p><strong><code>router.keep(key: str, value: any)</code></strong> -&gt; Like. <code>c.keep()</code> but persisted across multiple request lifecycles.</p>
 </li>
 <li>
-<p><strong><code>router.peek(key: str, value: any)</code></strong> -&gt; Take a peek at your global dynamic application state without removing the kept value.</p>
+<p><strong><code>router.peek(key: str, value: any)</code></strong> -&gt; Take a peek at the kept value without removing it from the <code>mutable</code> application store.</p>
 </li>
 <li>
-<p><strong><code>router.unkeep(key: str, value: any)</code></strong> -&gt; Remove and return the kept value from the global dynamic application state. </p>
+<p><strong><code>router.unkeep(key: str, value: any)</code></strong> -&gt; Remove and return the kept value from the <code>mutable</code> application store. </p>
 </li>
 </ul>
 <hr />
@@ -242,7 +242,6 @@ all work in similar fashion. The <code>subdomain</code> optional argument limits
 <p>What of authentication and authorization?</p>
 <p>Routerling is a microframwork so you have to roll your own which is <a href="">pretty simple to do with python decorators</a>.</p>
 </li>
-<li></li>
 </ol>
 
 			<br>
@@ -302,7 +301,7 @@ all work in similar fashion. The <code>subdomain</code> optional argument limits
 					<li>
 						Icons on this site are from <a href="https://fontawesome.com/" target="_blank">Font Awesome</a> which is licensed under the <a href="https://fontawesome.com/license/free" target="_blank">Font Awesome Free License</a>.
 					</li></ul>
-				<p>Built at 2022-01-02 11:45:42 UTC</p>
+				<p>Built at 2022-01-02 11:50:35 UTC</p>
 			</details>
 		</footer>
 
