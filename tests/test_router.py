@@ -2,7 +2,7 @@ from collections import deque
 from json import dumps
 from typing import Callable
 from unittest import TestCase, IsolatedAsyncioTestCase
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, patch, AsyncMock, ANY
 
 from routerling import Router, ResponseWriter, HttpRequest, Context
 from routerling.router import DEFAULT, Routes, _isparamx, _notify, _get_configuration
@@ -10,7 +10,8 @@ from routerling.errors import SubdomainError, UrlDuplicateError, UrlError
 from routerling.mocks import MOCK_SCOPE, MockHttpRequest, _get_mock_receiver
 
 # internal test modules
-from .test_request import one, two, three, four
+from tests import mock_scope, mock_receive, mock_metadata
+from tests.test_request import one, two, three, four
 
 
 MOCK_BODY = {'success': True}
@@ -100,6 +101,59 @@ class AsyncRouterTest(IsolatedAsyncioTestCase):
 
         a.assert_called_once()
         b.assert_called_once()
+    
+    async def test_mount(self):
+        router_a = Router({'SECRET': 'one', 'ID': 100})
+        router_b = Router({'SECRET': 'two'})
+        router_c = Router({'SECRET': 'three'})
+
+        router = Router()
+        router.mount(router_c, isolated=False)
+        router.mount(router_b)
+
+        # All other routers were isolated so they will not override secret from C
+        self.assertEqual('three', router.CONFIG('SECRET'))
+
+        router.mount(router_a, isolated=False)
+        self.assertEqual(100, router.CONFIG('ID'))
+    
+    async def test_mount_isolation(self):
+        URL = '/customers/:id/orders'
+
+        msend = AsyncMock()
+        async def mrecv():...
+
+        async def isolated_handler(r, w, c):
+            self.assertEqual('aye', r.app.CONFIG('SECRET'))
+            self.assertEqual('Router A', r.app.peek('name'))
+        
+        def unisolated_handler(r, w, c):
+            self.assertIsNone(r.app.CONFIG('SECRET'))
+            self.assertEqual('Default Router', r.app.peek('name'))
+
+        #isolated mount
+        router_a = Router({'SECRET': 'aye', 'ID': 100})
+        router_a.subdomain('host')
+        router_a.keep('name', 'Router A')
+        router_a.GET(URL, isolated_handler, 'host')
+
+        router = Router({'SECRET': None})
+        router.keep('name', 'Default Router')
+        router.mount(router_a)
+        await router(mock_scope, mrecv, msend)
+
+        # unisolated mount
+        router_b = Router({'SECRET': 'bee', 'ID': 100})
+        router_b.subdomain('host')
+        router_b.keep('name', 'Router A')
+        router_b.GET(URL, unisolated_handler, 'host')
+
+        router = Router({'SECRET': None})
+        router.keep('name', 'Default Router')
+        router.mount(router_b, isolated=False)
+        await router(mock_scope, mrecv, msend)
+
+        msend.assert_called()
 
 
 class RoutesTest(TestCase):
@@ -114,7 +168,7 @@ class RoutesTest(TestCase):
         return super().setUp()
 
     def test_add(self):
-        self.assertRaises(UrlDuplicateError, self.engine.add, 'GET', '/v1/customers/:id/receipts', one)
+        self.assertRaises(UrlDuplicateError, self.engine.add, 'GET', '/v1/customers/:id/receipts', one, self.router)
         root_route_node = self.engine.routes.get('GET')
         self.assertEqual(root_route_node.handler, four)
         self.assertFalse(root_route_node.parameterized)

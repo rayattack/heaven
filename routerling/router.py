@@ -44,7 +44,6 @@ methods = ['get', 'post', 'put', 'delete', 'connect', 'head', 'options', 'patch'
 
 Handler = Callable[[HttpRequest, ResponseWriter], object]
 
-MARK_PRESENT = 'yes father... (RIP Rev. Angus Fraser...)'
 SEPARATOR = INDEX = "/"
 
 
@@ -66,7 +65,8 @@ def _notify(width=80, event='startup'): #pragma: nocover
 
 
 class Route(object):
-    def __init__(self, route: str, handler: Callable) -> None:
+    def __init__(self, route: str, handler: Callable, router: 'Router') -> None:
+        self.routerling_instance = router
         self.parameterized = False
         self.route = route
         self.handler = handler
@@ -122,7 +122,7 @@ class Routes(object):
         self.cache = {CONNECT: {}, DELETE: {}, GET: {}, HEAD: {}, OPTIONS: {}, PATCH: {}, POST: {}, PUT: {}, TRACE: {}}
         self.routes = {}
 
-    def add(self, method: str, route: str, handler: Callable):
+    def add(self, method: str, route: str, handler: Callable, router: 'Router'):
         """
         method: one of POST, GET, OPTIONS... etc - i.e. the HTTP method
         route: the route url/endpoint
@@ -132,13 +132,13 @@ class Routes(object):
         try: assert self.cache.get(method, {}).get(route) is None
         except AssertionError: raise UrlDuplicateError
 
-        self.cache[method][route] = MARK_PRESENT
+        self.cache[method][route] = handler
 
         # here we check and set the root to be a route node i.e. / with no handler
         # if necessary so we can traverse freely
         route_node: Route = self.routes.get(method)
         if not route_node:
-            route_node = Route(None, None)
+            route_node = Route(None, None, router)
             self.routes[method] = route_node
 
         if route == SEPARATOR:
@@ -156,7 +156,7 @@ class Routes(object):
             _routerling, _parameterized = _isparamx(routerling)
             new_route_node = route_node.children.get(_routerling)
             if not new_route_node:
-                new_route_node = Route(None, None)
+                new_route_node = Route(None, None, router)
                 route_node.children[_routerling] = new_route_node
             
             route_node = new_route_node
@@ -231,6 +231,8 @@ class Routes(object):
 
         if not matched:
             return w
+
+        r._application = route_node.routerling_instance
 
         # call all pre handle request hooks but first reset response_writer from not found to found
         w.status = 200; w.body = b''
@@ -319,12 +321,12 @@ class Router(object):
         await send({'type': 'http.response.start', 'headers': response.headers, 'status': response.status})
         await send({'type': 'http.response.body', 'body': response.body, **response.metadata})
 
-    def abettor(self, method: str, route: str, handler: Handler, subdomain=DEFAULT):
+    def abettor(self, method: str, route: str, handler: Handler, subdomain=DEFAULT, router = None):
         if not route.startswith('/'): raise UrlError
         engine = self.subdomains.get(subdomain)
         if not isinstance(engine, Routes):
             raise SubdomainError
-        engine.add(method, route, handler)
+        engine.add(method, route, handler, router or self)
 
     def AFTER(self, route: str, handler: Callable, subdomain=DEFAULT):
         if not route.startswith('/'): raise UrlError(URL_ERROR_MESSAGE)
@@ -431,4 +433,28 @@ class Router(object):
         pass
 
     def subdomain(self, subdomain: str):
+        if self.subdomains.get(subdomain): return
         self.subdomains[subdomain] = Routes()
+
+    def mount(self, router: 'Router', isolated = True):
+        if not isolated:
+            self._buckets = {**router._buckets, **self._buckets}
+            self._configuration = {**router._configuration, **self._configuration}
+
+        self.deinitializers.extend(router.deinitializers)
+        self.initializers.extend(router.initializers)
+
+        for subdomain in router.subdomains:
+            engine: Routes = router.subdomains[subdomain]
+            for method in engine.cache:
+                cache = engine.cache[method]
+                for route in cache:
+                    handler = cache[route]
+                    self.subdomain(subdomain)
+                    self.abettor(method, route, handler, subdomain=subdomain, router=router if isolated else self)
+
+                    afters = engine.afters.get(route, [])
+                    self.subdomains[subdomain].afters[route] = [*afters, *self.subdomains[subdomain].afters.get(route, [])]
+
+                    befores = engine.befores.get(route, [])
+                    self.subdomains[subdomain].befores[route] = [*befores, *self.subdomains[subdomain].befores.get(route, [])]
