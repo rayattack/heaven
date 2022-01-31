@@ -1,4 +1,4 @@
-# Routerling : <img src="https://img.shields.io/badge/coverage-92%25-green" />
+# Routerling : <img src="https://img.shields.io/badge/coverage-95%25-green" />
 
 Routerling is a very very small, extremely tiny, and insanely fast [ASGI](https://asgi.readthedocs.io) web application framework. It was designed to facilitate productivity by allowing for complete mastery in 7 minutes or less.
 
