@@ -28,7 +28,7 @@ router = Router()
 router.GET('/', index)
 ```
 
-You can run with uvicorn, gunicorn, daphne or any other asgi server of your choice
+You can run with uvicorn, gunicorn or any other asgi HTTP, HTTP2, and web socket protocol server of your choice.
 ```sh
 $ uvicorn main:router --reload
  * Running on http://127.0.0.1:8000
