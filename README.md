@@ -18,7 +18,9 @@ $ pip install routerling
 from routerling import Router
 
 
-# handlers are simply functions that accept 3 arguments and can be organized to developer tastes
+# handlers are simply functions that accept 3 arguments
+# this makes folder structure arrangement insanely straight forward
+# i.e. no circular imports in routerling
 async def index(req, res, ctx):
     res.body = 'Hello, World!'
 
