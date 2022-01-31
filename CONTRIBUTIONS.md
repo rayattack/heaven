@@ -28,5 +28,5 @@ Kindly include the following in your patch:
 
 - Use Black to format your code. This and other tools will run automatically if you install pre-commit using the instructions below.
 - Include tests if your patch adds or changes code. Make sure the test fails without your patch.
-- Update any relevant docs pages and docstrings. Docs pages and docstrings should be wrapped at 72 characters.
+- Update any relevant docs pages and docstrings. Docs pages and docstrings should be wrapped below 128 characters where possible.
 - Add an entry in [CHANGES](changes.md). Use the same style as other entries. Also include .. versionchanged:: inline changelogs in relevant docstrings.
