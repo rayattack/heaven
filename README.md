@@ -1,7 +1,48 @@
-# Routerling
+# Routerling : <img src="https://img.shields.io/badge/coverage-92%25-green" />
 
-<img src="https://img.shields.io/badge/coverage-92%25-green" />
+Routerling is a very very small, extremely tiny, and insanely fast [ASGI]() web application framework. It was designed to be facilitate complete mastery in 7 minutes or less.
 
-Build web applications and enterprise microservices with the _**simplest**_ and possibly the fastest or one of the _**fastest**_ web microframeworks for python.
+Routerling is a very light layer around ASGI with support for application mounting and is perhaps the simplest and one of the fastest python web frameworks (biased opinion of course).
 
-[Go To Docs](https://rayattack.github.io/routerling)
+
+## Installling
+Install with [pip](https://pip.pypa.io/en/stable/getting-started/)
+```sh
+$ pip install routerling
+```
+
+## A Simple Example
+<hr/>
+
+```py
+from routerling import Router
+
+
+# handlers are simply functions that accept 3 arguments and can be organized to developer tastes
+async def index(req, res, ctx):
+    res.body = 'Hello, World!'
+
+
+router = Router()
+
+
+router.GET('/', index)
+```
+
+You can run with uvicorn, gunicorn, daphne or any other asgi server of your choice
+```sh
+$ uvicorn main:router --reload
+ * Running on http://127.0.0.1:8000
+```
+
+
+## Contributing
+
+For guidance on how to make contributions to Routerling, see the [Contribution Guidelines](contributions.md)
+
+
+## Links
+
+- Documentation [Go To Docs](https://rayattack.github.io/routerling)
+- PyPi [https://pypi.org/project/routerling](https://pypi.org/project/routerling)
+- Source Code [Github](https://github.com/rayattack/routerling)
