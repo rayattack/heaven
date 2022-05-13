@@ -27,12 +27,12 @@ class AsyncRouterTest(IsolatedAsyncioTestCase):
         self.router = Router()
         self.scope = {**MOCK_SCOPE, 'path': '/v1/customers'}
         self.router.GET('/v1/customers', five)
-        self.engine = self.router.subdomains.get('www')
+        self.engine = self.router.subdomains.get(DEFAULT)
         return super().setUp()
     
     async def test_handle(self):
         receiver = _get_mock_receiver('http.request', MOCK_BODY)
-        metadata = 'www', None # i.e. subdomain and headers
+        metadata = DEFAULT, None # i.e. subdomain and headers
 
         # scope host is ignored for subdomain routing because we are calling the engine directly
         response = await self.engine.handle(self.scope, receiver, None, metadata, self.router)
@@ -164,7 +164,7 @@ class RoutesTest(TestCase):
         self.router.GET('/v1/customers', three)
         self.router.GET('/v1/customers/*', four)
         self.router.GET('/', four)
-        self.engine = self.router.subdomains.get('www')
+        self.engine = self.router.subdomains.get(DEFAULT)
         return super().setUp()
 
     def test_add(self):

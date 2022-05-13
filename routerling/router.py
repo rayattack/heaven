@@ -1,10 +1,9 @@
-from http import HTTPStatus as status
-
 from collections import deque
+from functools import wraps
 from inspect import iscoroutinefunction
 
 from uvicorn import run
-from typing import Callable, Generic, TypeVar
+from typing import Callable
 
 from .constants import (
     CONNECT,
@@ -12,8 +11,6 @@ from .constants import (
     DELETE,
     GET,
     HEAD,
-    INITIALIZATION_MESSAGE,
-    MESSAGE_NOT_FOUND,
     METHODS,
     METHOD_CONNECT,
     METHOD_DELETE,
@@ -27,7 +24,6 @@ from .constants import (
     PATCH,
     POST,
     PUT,
-    STATUS_NOT_FOUND,
     TRACE,
     URL_ERROR_MESSAGE
 )
@@ -85,9 +81,16 @@ class Route(object):
                 current_node = node.children.get(':')
                 if current_node:
                     r.params = current_node.parameterized, route
+                    """Store the label that immediately follows the ':' represented by paremeterized
+                    and its value represented as route into request.params"""
+
                     if(node.children.get('*')):
                         route_at_deviation = '/'.join([route, *routes])
                         deviation_point = node.children.get('*')
+                    """If there was also a wildcard seeing as placeholder ':' takes precedence, then
+                    mark the point it deviated so it is possible to backtrack and use that point for
+                    matching if this path fumbles later"""
+
                     node = current_node
                     continue
 
@@ -99,6 +102,8 @@ class Route(object):
                 if deviation_point:
                     r.params = '*', route_at_deviation
                     return deviation_point.route, deviation_point.handler
+                """This is one place where the deviation point is used - the remainder of the url supplied is
+                passed into request.params as the value for '*' for optional lookup purposes"""
 
                 return matched, self.not_found
             node = current_node
@@ -146,7 +151,8 @@ class Routes(object):
             route_node.handler = handler
             return
 
-        # Otherwise strip and split the routes into stops or stoppable stumps i.e. /customers /:id /orders
+        # Otherwise strip and split the routes into stops or stoppable
+        # stumps i.e. /customers/:id/orders -> [customers, :id, orders]
         routes = route.strip(SEPARATOR).split(SEPARATOR)
 
         # get the length of the routes so we can use for validation checks in a loop later
@@ -276,15 +282,24 @@ class Routes(object):
                 self.cache[method][route] = None
 
     async def xhooks(self, hookstore, matched, r: HttpRequest, w: ResponseWriter, c: Context):
-        # traverse the before tree - changed to tree to match routes tree
-        # for every * add it to list of hooks to call
-        # if match also add functions there to list of hooks to call
         hooks = set(hookstore.get(matched, []))
+        """Here we are getting any and or all hooks that match the url verbatim as provided
+        i.e. /url/:id or /url/:id/nested
+        """
+
         parts = matched.strip(SEPARATOR).split(SEPARATOR)
         for position, part in enumerate(parts):
             joinedparts = "/".join(parts[:position])
             _ = '' if position == 0 else SEPARATOR
             hooks.update(hookstore.get(f'/{joinedparts}{_}*', []))
+        """Next we clean the matched url of any '/' surpluses before splitting it into a list
+        for enumeration.
+        Enumeration helps us gradually use the current enumeration position/offset/index to
+        gradually append '*' until we get a match.
+        We stop at a level before matched/masked url as we already searched for verbatim match
+        hence no index + 1 used
+        """
+
         for hook in hooks:
             if w._abort: raise AbortException
             if iscoroutinefunction(hook): await hook(r, w, c)
@@ -315,7 +330,7 @@ class Router(object):
                     await send({'type': 'lifespan.shutdown.complete'})
 
         metadata = preprocessor(scope)
-        engine = self.subdomains.get(metadata[0]) or self.subdomains.get('*')
+        engine = self.subdomains.get(metadata[0]) or self.subdomains.get(DEFAULT)
 
         response = await engine.handle(scope, receive, send, metadata, self)
         await send({'type': 'http.response.start', 'headers': response.headers, 'status': response.status})
@@ -380,11 +395,18 @@ class Router(object):
         try: assert arguments <= 2
         except: raise TypeError('ONCE function received more than 2 arguments')
 
+        def closure(func):
+            @wraps(func)
+            async def hidden(r):
+                if iscoroutinefunction(func): return await func(self)
+                else: return func(self)
+            return hidden
+
         if arguments == 1:
             first = args[0]
             try: assert isinstance(first, Callable)
             except AssertionError: raise TypeError(error_message)
-            self.initializers.append(first)
+            self.initializers.append(closure(first))
         else:
             first, second = args
 
@@ -394,8 +416,8 @@ class Router(object):
             try: assert isinstance(second, Callable)
             except AssertionError: raise TypeError(error_message)
 
-            if first == 'startup': self.initializers.append(second)
-            else: self.deinitializers.append(second)
+            if first == 'startup': self.initializers.append(closure(second))
+            else: self.deinitializers.append(closure(second))
 
     async def _register(self):
         i = len(self.initializers)
@@ -452,9 +474,7 @@ class Router(object):
                     handler = cache[route]
                     self.subdomain(subdomain)
                     self.abettor(method, route, handler, subdomain=subdomain, router=router if isolated else self)
-
-                    afters = engine.afters.get(route, [])
-                    self.subdomains[subdomain].afters[route] = [*afters, *self.subdomains[subdomain].afters.get(route, [])]
-
-                    befores = engine.befores.get(route, [])
-                    self.subdomains[subdomain].befores[route] = [*befores, *self.subdomains[subdomain].befores.get(route, [])]
+            for after in engine.afters:
+                self.subdomains[subdomain].afters[after] = [*engine.afters[after], *self.subdomains[subdomain].afters.get(after, [])]
+            for before in engine.befores:
+                self.subdomains[subdomain].befores[before] = [*engine.befores[before], *self.subdomains[subdomain].befores.get(before, [])]

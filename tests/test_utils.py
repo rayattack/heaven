@@ -1,5 +1,6 @@
 from unittest import TestCase
 
+from routerling.constants import DEFAULT
 from routerling.mocks import MOCK_SCOPE
 from routerling.utils import b_or_s, preprocessor
 
@@ -21,5 +22,5 @@ class TestUtils(TestCase):
     def test_scope_ip(self):
         self.scope['headers'] = [['host', '127.0.0.1']]
         subdomain, headers = preprocessor(self.scope)
-        self.assertEqual(subdomain, 'www')
+        self.assertEqual(subdomain, DEFAULT)
         self.assertDictEqual(headers, {'host': '127.0.0.1'})

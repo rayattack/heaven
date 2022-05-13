@@ -2,4 +2,4 @@ import routerling
 
 
 def test_version():
-    assert routerling.__version___ == '0.4.1'
+    assert routerling.__version___ == '0.4.2'
