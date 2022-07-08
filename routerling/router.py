@@ -207,7 +207,12 @@ class Routes(object):
         """
         Traverse internal route tree and use appropriate method
         """
-        body = await receive()
+        body = b''
+        more = True
+        while more:
+            msg = await receive()
+            body += msg.get('body', b'')
+            more = msg.get('more_body', False)
 
         r = HttpRequest(scope, body, receive, metadata, application)
         w = ResponseWriter()

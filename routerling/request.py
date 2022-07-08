@@ -1,9 +1,13 @@
+from routerling.form import Form
+
+
 class HttpRequest():
     def __init__(self, scope, body, receive, metadata=None, application=None):
         self._application = application
         self._scope = scope
         self._body = body
         self._cookies = None
+        self._form = None
         self._receive = receive
         self._subdomain, self._headers = metadata
         self._params = None
@@ -31,8 +35,8 @@ class HttpRequest():
 
     @property
     def body(self):
-        return self._body.get('body')
-    
+        return self._body
+
     @property
     def cookies(self):
         if not self._cookies:
@@ -47,13 +51,21 @@ class HttpRequest():
         return self._cookies
 
     @property
+    def form(self):
+        if not 'multipart/form-data' in self.headers.get('content-type'):
+            return self._form  # currently none
+        if self._form: return self._form
+        self._form = Form(self)
+        return self._form
+
+    @property
     def headers(self):
         if not self._headers:
             self._headers = {}
             for header in self._scope.get('headers'):
                 self._headers[header[0]] = header[1]
         return self._headers
-     
+
     @property
     def method(self):
         return self._scope.get('method')
@@ -73,7 +85,7 @@ class HttpRequest():
     @property
     def querystring(self):
         return self._scope.get('query_string', '')
-    
+
     @property
     def subdomain(self):
         return self._subdomain

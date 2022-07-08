@@ -1,14 +1,61 @@
 site_name: Routerling Docs
 site_url: https://rayattack.github.io/routerling
-nav:
-  - Home: default.md
-  - Quickstart: quickstart.md
-  - Samples: samples.md
+
+site_description: Python to SQL engine
+site_author: Raymond Ortserga
+
+repo_name: rayattack/routerling
+repo_url: https://www.github.com/rayattack/routerling
+
 theme:
-  name: custommill
-  home: default
-  search_index_only: true
-  include_search_page: true
-  main_color: '#db6118'
-  gray: '#e0e0e0'
-  lighter_gray: '#eeeeee'
+  name: 'material'
+  palette:
+    primary: black
+  include_search_page: false
+  feature:
+    tabs: true
+  logo: 'images/logo.png'
+
+plugins:
+  - search
+  - minify:
+      minify_html: true
+
+nav:
+  - Welcome To Routerling: api.md
+  - Table Schema Definition: default.md
+  - Results Object: samples.md
+  - SQL Command Reference:
+      - Function: quickstart.md
+  - Database Discovery: example.md
+
+extra_css:
+  - 'custom.css'
+
+markdown_extensions:
+  - markdown.extensions.admonition
+  - markdown.extensions.codehilite:
+      guess_lang: false
+  - markdown.extensions.def_list
+  - markdown.extensions.footnotes
+  - markdown.extensions.meta
+  - markdown.extensions.toc:
+      permalink: true
+  - pymdownx.arithmatex
+  - pymdownx.betterem:
+      smart_enable: all
+  - pymdownx.caret
+  - pymdownx.critic
+  - pymdownx.details
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.magiclink:
+      repo_url_shorthand: true
+      user: squidfunk
+      repo: mkdocs-material
+  - pymdownx.mark
+  - pymdownx.smartsymbols
+  - pymdownx.superfences
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tilde

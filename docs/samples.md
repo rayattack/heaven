@@ -65,7 +65,11 @@ async def create_customer_order(r: HttpRequest, w: ResponseWriter, c: Context):
 		'email': c.email
 	})
 ```
+
+
 ---
+
+
 This example demonstrates one of the ways Authentication might be implemented with the `pyjwt` library.
 ```py
 from asyncpg import Pool
