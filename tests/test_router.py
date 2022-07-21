@@ -1,5 +1,5 @@
 from collections import deque
-from json import dumps
+from ujson import dumps, loads
 from typing import Callable
 from unittest import TestCase, IsolatedAsyncioTestCase
 from unittest.mock import Mock, patch, AsyncMock, ANY
@@ -7,19 +7,18 @@ from unittest.mock import Mock, patch, AsyncMock, ANY
 from routerling import Router, ResponseWriter, HttpRequest, Context
 from routerling.router import DEFAULT, Routes, _isparamx, _notify, _get_configuration
 from routerling.errors import SubdomainError, UrlDuplicateError, UrlError
-from routerling.mocks import MOCK_SCOPE, MockHttpRequest, _get_mock_receiver
+from routerling.mocks import MOCK_SCOPE, MOCK_BODY, MockHttpRequest, _get_mock_receiver
 
 # internal test modules
 from tests import mock_scope, mock_receive, mock_metadata
 from tests.test_request import one, two, three, four
 
 
-MOCK_BODY = {'success': True}
-MOCK_BODY_EXPECTED = {**MOCK_BODY, 'message': 'five...'}
+MOCK_BODY_EXPECTED = {**loads(MOCK_BODY.get('body')), 'message': 'five...'}
 
 
 def five(r: HttpRequest, w: ResponseWriter, c: Context):
-    w.body = dumps({**r.body, 'message': 'five...'})
+    w.body = dumps({**loads(r.body), 'message': 'five...'})
 
 
 class AsyncRouterTest(IsolatedAsyncioTestCase):
@@ -31,15 +30,14 @@ class AsyncRouterTest(IsolatedAsyncioTestCase):
         return super().setUp()
     
     async def test_handle(self):
-        receiver = _get_mock_receiver('http.request', MOCK_BODY)
+        receiver = _get_mock_receiver()
         metadata = DEFAULT, None # i.e. subdomain and headers
 
         # scope host is ignored for subdomain routing because we are calling the engine directly
         response = await self.engine.handle(self.scope, receiver, None, metadata, self.router)
         self.assertIsInstance(response, ResponseWriter)
 
-        expected_response_from_five = dumps(MOCK_BODY_EXPECTED).encode()
-        self.assertEqual(response.body, expected_response_from_five)
+        self.assertEqual(response.body, dumps({**loads(MOCK_BODY.get('body')), 'message': 'five...'}).encode())
     
     @patch('routerling.router._notify')
     async def test_call(self, _notify):
@@ -50,10 +48,11 @@ class AsyncRouterTest(IsolatedAsyncioTestCase):
 
         self.router.ONCE(exception_raiser)
 
-        receiver = _get_mock_receiver('http.request', MOCK_BODY)
+        receiver = _get_mock_receiver()
         self.scope['headers'] = []
         result = await self.router(self.scope, receiver, send)
-        # lifespan event requires additional mocking so comment and notify tested in own function below already... self.assertEqual(mock.call_count, 2)
+        # lifespan event requires additional mocking so comment
+        # and notify tested in own function below already... self.assertEqual(mock.call_count, 2)
         expected_response = dumps(MOCK_BODY_EXPECTED).encode()
         mock.assert_called_with({'type': 'http.response.body', 'body': expected_response})
     
@@ -121,7 +120,12 @@ class AsyncRouterTest(IsolatedAsyncioTestCase):
         URL = '/customers/:id/orders'
 
         msend = AsyncMock()
-        async def mrecv():...
+        async def mrecv():
+            return {
+                'type': 'http.request.body',
+                'body': b'{"example": "Some JSON data"}',
+                'more_body': False
+            }
 
         async def isolated_handler(r, w, c):
             self.assertEqual('aye', r.app.CONFIG('SECRET'))

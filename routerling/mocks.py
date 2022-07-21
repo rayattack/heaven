@@ -39,14 +39,17 @@ MOCK_SCOPE = {
         ["set-cookie", "according to the standard i read set-cookie can appear twice"]
     ]
 }
+MOCK_BODY = {
+    'type': 'http.request.body',
+    'body': b'{"example": "Some JSON data"}',
+    'more_body': False
+}
 
 
-def _get_mock_receiver(event, body):
+
+def _get_mock_receiver():
     async def receive():
-        return {
-            'type': event,
-            'body': body
-        }
+        return MOCK_BODY
     return receive
 
 
@@ -80,7 +83,7 @@ class MockHttpRequest(HttpRequest):
         scope={**MOCK_SCOPE}
     ):
         assert method in METHODS
-        receive = _get_mock_receiver(event, body)
+        receive = _get_mock_receiver()
         scope['path'] = url
         scope['raw_path'] = url
         scope['method'] = method

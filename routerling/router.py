@@ -2,7 +2,6 @@ from collections import deque
 from functools import wraps
 from inspect import iscoroutinefunction
 
-from uvicorn import run
 from typing import Callable
 
 from .constants import (
@@ -393,6 +392,9 @@ class Router(object):
     def TRACE(self, route: str, handler: Callable, subdomain=DEFAULT):
         self.abettor(METHOD_TRACE, route, handler, subdomain)
 
+    def ON(self, *args):
+        return self.ONCE(*args)
+
     def ONCE(self, *args):
         arguments = len(args)
         error_message = 'ONCE requires a callable argument as default'
@@ -415,13 +417,13 @@ class Router(object):
         else:
             first, second = args
 
-            try: assert first in ['startup', 'shutdown']
-            except AssertionError: raise ValueError(help_message)
+            try: assert first.lower() in ['startup', 'shutdown']
+            except (AssertionError, TypeError, AttributeError): raise ValueError(help_message)
 
             try: assert isinstance(second, Callable)
             except AssertionError: raise TypeError(error_message)
 
-            if first == 'startup': self.initializers.append(closure(second))
+            if first.lower() == 'startup': self.initializers.append(closure(second))
             else: self.deinitializers.append(closure(second))
 
     async def _register(self):

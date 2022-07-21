@@ -2,3 +2,4 @@ dist/
 .venv/
 .coverage
 .codecov.yml
+.site/

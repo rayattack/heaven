@@ -14,11 +14,14 @@ def one(r: HttpRequest, w: ResponseWriter, c: Context):
     """Response should be tested in response class but setup of body done here"""
     w.body = 1000
 
+
 def two(r: HttpRequest, w: ResponseWriter, c: Context):
     w.body = 2000
 
+
 def three(r: HttpRequest, w: ResponseWriter, c: Context):
     w.body = 3000
+
 
 def four(r: HttpRequest, w: ResponseWriter, c: Context):
     w.body = 4000
@@ -26,20 +29,22 @@ def four(r: HttpRequest, w: ResponseWriter, c: Context):
 
 class TestRequest(TestCase):
     def setUp(self) -> None:
-        self.request = HttpRequest(mock_scope, mock_body, mock_receive, mock_metadata, Router())
+        self.request = HttpRequest(
+            mock_scope, mock_body, mock_receive, mock_metadata, Router()
+        )
         return super().setUp()
 
     def test_request_app_instance(self):
         self.assertIsInstance(self.request.app, Router)
-    
+
     def test_request_body(self):
-        self.assertEqual(self.request.body, mock_body.get('body'))
-    
+        self.assertEqual(self.request.body, mock_body)
+
     def test_request_cookies(self):
         self.assertIsNotNone(self.request.cookies)
-        self.assertEqual(self.request.cookies.get('foo'), 'bar')
-        self.assertEqual(self.request.cookies.get('baz'), 'yimu')
-    
+        self.assertEqual(self.request.cookies.get("foo"), "bar")
+        self.assertEqual(self.request.cookies.get("baz"), "yimu")
+
     def test_preprocessor(self):
         results = preprocessor(mock_scope)
         self.assertIsInstance(results, tuple)
@@ -47,42 +52,45 @@ class TestRequest(TestCase):
         self.assertIsInstance(subdomain, str)
         self.assertIsInstance(headers, dict)
 
-        self.assertEqual(subdomain, 'host')
-    
+        self.assertEqual(subdomain, "host")
+
     def test_headers_preprocessed(self):
-        self.assertIsInstance(self.request.headers.get('set-cookie'), list)
+        self.assertIsInstance(self.request.headers.get("set-cookie"), list)
 
         # tied to content of asgi.json so change that file with care
-        cookie_message = 'i added this for testing manually and not from scope object'
-        self.assertEqual(self.request.headers.get('set-cookie')[0], cookie_message)
+        cookie_message = "i added this for testing manually and not from scope object"
+        self.assertEqual(self.request.headers.get("set-cookie")[0], cookie_message)
 
         # remove preprocessed headers forcefully (i.e. ignoring private hint in var name)
         self.request._headers = None
         self.assertIsInstance(self.request.headers, dict)
-    
-    def test_request_method_parsed_from_scope(self):
-        self.assertEqual(self.request.method, 'GET')
-    
-    def test_query_strings_parsed_correctly(self):
-        params = self.request.params
-        self.assertEqual(params.get('page'), '2')
-        self.assertIsInstance(params.get('pagination'), list)
-    
+
     def test_params_setting_appropriately(self):
-        self.request.params = 'key', 'value'
-        self.request.params = 'another', True
-        self.assertEqual(self.request.params.get('key'), 'value')
+        self.request.params = "key", "value"
+        self.request.params = "another", True
+        self.assertEqual(self.request.params.get("key"), "value")
 
         self.request._scope = {}
         self.request._params = None
         self.assertDictEqual(self.request.params, {})
-    
+
+    def test_query_strings_parsed_correctly(self):
+        params = self.request.params
+        self.assertEqual(params.get("page"), "2")
+        self.assertIsInstance(params.get("pagination"), list)
+
     def test_querystring_helper(self):
         self.assertIsNotNone(self.request.querystring)
-    
+
+    def test_request_method_parsed_from_scope(self):
+        self.assertEqual(self.request.method, "GET")
+
+    def test_request_scheme(self):
+        self.assertEqual(self.request.scheme, "http")
+
     def test_subdomain(self):
-        self.assertEqual(self.request.subdomain, 'host')
-    
+        self.assertEqual(self.request.subdomain, "host")
+
     def test_request_path_retrieval(self):
         return self.assertEqual(self.request.url, "/customers/23/orders")
 
