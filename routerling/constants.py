@@ -1,4 +1,4 @@
-DEFAULT = '*'
+DEFAULT = 'www'
 
 INITIALIZATION_MESSAGE = '\n-------------- Initializing `ONCE` Func(s) --------------'
 
