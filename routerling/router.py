@@ -1,3 +1,4 @@
+from asyncio import gather
 from collections import deque
 from functools import wraps
 from inspect import iscoroutinefunction
@@ -24,7 +25,8 @@ from .constants import (
     POST,
     PUT,
     TRACE,
-    URL_ERROR_MESSAGE
+    URL_ERROR_MESSAGE,
+    WILDCARD
 )
 
 from .errors import AbortException, SubdomainError, UrlDuplicateError, UrlError
@@ -334,11 +336,19 @@ class Router(object):
                     await send({'type': 'lifespan.shutdown.complete'})
 
         metadata = preprocessor(scope)
-        engine = self.subdomains.get(metadata[0]) or self.subdomains.get(DEFAULT)
+        subdomain = metadata[0]
+        wildcard_engine = self.subdomains.get(WILDCARD)
+        engine = self.subdomains.get(subdomain)
+        if not engine:
+            engine = wildcard_engine if wildcard_engine else self.subdomains.get(DEFAULT)
 
         response = await engine.handle(scope, receive, send, metadata, self)
         await send({'type': 'http.response.start', 'headers': response.headers, 'status': response.status})
         await send({'type': 'http.response.body', 'body': response.body, **response.metadata})
+
+        # add background tasks
+        if response.deferred:
+            await gather(*[func() for func in response._deferred])
 
     def abettor(self, method: str, route: str, handler: Handler, subdomain=DEFAULT, router = None):
         if not route.startswith('/'): raise UrlError

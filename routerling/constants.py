@@ -20,3 +20,5 @@ STATUS_CREATED = CREATED = 201
 STATUS_NOT_FOUND = NOT_FOUND = 404
 
 URL_ERROR_MESSAGE = 'Malformed route detected, all routes must start with a `/`'
+
+WILDCARD = '*'

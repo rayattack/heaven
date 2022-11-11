@@ -32,6 +32,7 @@ class ResponseWriter():
     def __init__(self):
         self._abort = False
         self._body = MESSAGE_NOT_FOUND.encode()
+        self._deferred = []
         self._metadata = {}
         self._headers = []
         self._status = STATUS_NOT_FOUND
@@ -59,7 +60,14 @@ class ResponseWriter():
     @body.setter
     def body(self, value):
         self._body = _body(value)
-    
+
+    def defer(self, func):
+        self._deferred.append(func)
+
+    @property
+    def deferred(self):
+        return len(self._deferred) > 0
+
     @property
     def headers(self):
         return self._headers
