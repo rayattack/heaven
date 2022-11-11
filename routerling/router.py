@@ -24,6 +24,8 @@ from .constants import (
     PATCH,
     POST,
     PUT,
+    SHUTDOWN,
+    STARTUP,
     TRACE,
     URL_ERROR_MESSAGE,
     WILDCARD
@@ -54,7 +56,7 @@ def _isparamx(r: str):
     return (':', r[1:],) if r.startswith(':') else (r, None,)
 
 
-def _notify(width=80, event='startup'): #pragma: nocover
+def _notify(width=80, event=STARTUP): #pragma: nocover
     drawline = lambda: print('=' * width)
     drawline()
     print(f'NOTE: The `LAST` {event} func above failed and prevented others from running')
@@ -332,7 +334,7 @@ class Router(object):
                     await send({'type': 'lifespan.startup.complete'})
                 elif message['type'] == 'lifespan.shutdown':
                     try: await self._unregister()
-                    except: _notify(event='shutdown')
+                    except: _notify(event=SHUTDOWN)
                     await send({'type': 'lifespan.shutdown.complete'})
 
         metadata = preprocessor(scope)
@@ -427,13 +429,13 @@ class Router(object):
         else:
             first, second = args
 
-            try: assert first.lower() in ['startup', 'shutdown']
+            try: assert first.lower() in [STARTUP, SHUTDOWN]
             except (AssertionError, TypeError, AttributeError): raise ValueError(help_message)
 
             try: assert isinstance(second, Callable)
             except AssertionError: raise TypeError(error_message)
 
-            if first.lower() == 'startup': self.initializers.append(closure(second))
+            if first.lower() == STARTUP: self.initializers.append(closure(second))
             else: self.deinitializers.append(closure(second))
 
     async def _register(self):
