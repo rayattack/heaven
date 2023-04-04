@@ -3,3 +3,4 @@ dist/
 .coverage
 .codecov.yml
 .site/
+__pycache__/

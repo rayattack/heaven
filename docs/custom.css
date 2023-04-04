@@ -1,0 +1,32 @@
+/* code {
+    color: #000 !important;
+}
+
+.md-main {
+    background-color: black !important;
+    color: white;
+}
+
+.md-main h1, H5 {
+    color: #fff !important;
+}
+.md-main .md-nav a {
+    color: #ccc;
+}
+.md-main .md-nav a:active {
+    color: #b36363 !important;
+    font-weight: 900;
+}
+.md-main table, table td, table th{
+    border: 1px solid #ccc;
+    border-collapse: collapse;
+}
+
+
+pre {
+    background-color: #ccc !important;
+} */
+
+.o+.n{
+    color: #864da0;
+}

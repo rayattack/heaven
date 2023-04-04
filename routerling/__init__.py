@@ -5,4 +5,4 @@ from .response import ResponseWriter
 from .context import Context
 
 
-__version___ = '0.5.0'
+__version___ = '0.5.1'

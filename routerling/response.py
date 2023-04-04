@@ -1,4 +1,5 @@
 from functools import singledispatch, update_wrapper
+from http import HTTPStatus
 
 from .constants import MESSAGE_NOT_FOUND, STATUS_NOT_FOUND
 
@@ -36,6 +37,7 @@ class ResponseWriter():
         self._metadata = {}
         self._headers = []
         self._status = STATUS_NOT_FOUND
+        self._template = None
 
     @MethodDispatch
     def abort(self, payload):
@@ -56,7 +58,7 @@ class ResponseWriter():
     @property
     def body(self):
         return self._body
-    
+
     @body.setter
     def body(self, value):
         self._body = _body(value)
@@ -78,20 +80,33 @@ class ResponseWriter():
         _encode = lambda k: k.encode('utf-8') if isinstance(k, str) else k
         value = _encode(key), _encode(val)
         self._headers.append(value)
-    
+
     @property
     def metadata(self):
         return self._metadata
-    
+
     @metadata.setter
     def metadata(self, value):
         if not isinstance(value, dict): raise ValueError
         self._metadata = value
 
+    def redirect(self, location, permanent=False):
+        if permanent: self.status = HTTPStatus.PERMANENT_REDIRECT
+        else: self.status = HTTPStatus.TEMPORARY_REDIRECT
+        self.headers = 'Location', location
+
     @property
     def status(self):
         return self._status
-    
+
     @status.setter
     def status(self, value: int):
         self._status = value
+
+    @property
+    def template(self):
+        return self._template
+
+    @template.setter
+    def template(self, path):
+        self._template
