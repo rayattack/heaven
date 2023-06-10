@@ -2,11 +2,13 @@ from json import dumps
 from http import HTTPStatus as status
 from unittest import TestCase
 
-from routerling import ResponseWriter
-from routerling.constants import MESSAGE_NOT_FOUND
+from heaven import Response, Router, Context
+from heaven.constants import MESSAGE_NOT_FOUND
 
 
-response = ResponseWriter()
+router = Router()
+context = Context(router)
+response = Response(app=router, context=context)
 
 
 def test_headers_encoding():

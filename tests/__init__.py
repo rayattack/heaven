@@ -1,6 +1,6 @@
 from json import load
 
-from routerling.utils import preprocessor
+from heaven.utils import preprocessor
 
 
 with open("tests/asgi.json") as mocked:

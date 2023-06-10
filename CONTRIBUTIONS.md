@@ -6,9 +6,9 @@ Thank you so much for considering to use the most valuable resource in the unive
 Please don't use the issue tracker for this. The issue tracker is a tool to address bugs and feature request in Routerling itself. Use any of the following
 resources for questions about Routerling or issues with your own code:
 
-- The mailing list routerling@python.org for long term discussions or larger issues.
-- Ask on [Stack Overflow](https://www.stackoverflow.com). Search with Google or Bing using: site:stackoverflow.com routerling {search term, exception message etc.}
-- Ask via [GitHub Discussions](https://www.github.com/rayattack/routerling/discussions)
+- The mailing list heaven@python.org for long term discussions or larger issues.
+- Ask on [Stack Overflow](https://www.stackoverflow.com). Search with Google or Bing using: site:stackoverflow.com heaven {search term, exception message etc.}
+- Ask via [GitHub Discussions](https://www.github.com/rayattack/heaven/discussions)
 
 
 ##  Reporting Issues

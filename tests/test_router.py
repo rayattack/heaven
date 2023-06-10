@@ -4,10 +4,10 @@ from typing import Callable
 from unittest import TestCase, IsolatedAsyncioTestCase
 from unittest.mock import Mock, patch, AsyncMock, ANY
 
-from routerling import Router, ResponseWriter, HttpRequest, Context
-from routerling.router import DEFAULT, Routes, _isparamx, _notify, _get_configuration
-from routerling.errors import SubdomainError, UrlDuplicateError, UrlError
-from routerling.mocks import MOCK_SCOPE, MOCK_BODY, MockHttpRequest, _get_mock_receiver
+from heaven import App, Application, Router, Response, Request, Context
+from heaven.router import DEFAULT, Routes, _isparamx, _notify, _get_configuration
+from heaven.errors import SubdomainError, UrlDuplicateError, UrlError
+from heaven.mocks import MOCK_SCOPE, MOCK_BODY, MockRequest, _get_mock_receiver
 
 # internal test modules
 from tests import mock_scope, mock_receive, mock_metadata
@@ -17,13 +17,13 @@ from tests.test_request import one, two, three, four
 MOCK_BODY_EXPECTED = {**loads(MOCK_BODY.get('body')), 'message': 'five...'}
 
 
-def five(r: HttpRequest, w: ResponseWriter, c: Context):
+def five(r: Request, w: Response, c: Context):
     w.body = dumps({**loads(r.body), 'message': 'five...'})
 
 
 class AsyncRouterTest(IsolatedAsyncioTestCase):
     def setUp(self) -> None:
-        self.router = Router()
+        self.router = Application()
         self.scope = {**MOCK_SCOPE, 'path': '/v1/customers'}
         self.router.GET('/v1/customers', five)
         self.engine = self.router.subdomains.get(DEFAULT)
@@ -35,11 +35,11 @@ class AsyncRouterTest(IsolatedAsyncioTestCase):
 
         # scope host is ignored for subdomain routing because we are calling the engine directly
         response = await self.engine.handle(self.scope, receiver, None, metadata, self.router)
-        self.assertIsInstance(response, ResponseWriter)
+        self.assertIsInstance(response, Response)
 
         self.assertEqual(response.body, dumps({**loads(MOCK_BODY.get('body')), 'message': 'five...'}).encode())
     
-    @patch('routerling.router._notify')
+    @patch('heaven.router._notify')
     async def test_call(self, _notify):
         mock = Mock()
 
@@ -220,17 +220,17 @@ class RoutesTest(TestCase):
         # first match params
         url1 = '/v1/customers'
         url_q1 = deque(xsplit(url1))
-        req1 = MockHttpRequest(url1)
+        req1 = MockRequest(url1)
 
         # second match params
         url2 = '/v1/customers/34/receipts'
         url_q2 = deque(xsplit(url2))
-        req2 = MockHttpRequest(url2)
+        req2 = MockRequest(url2)
 
         # second match params
         url3 = '/v1/customers/34/receipts/45'
         url_q3 = deque(xsplit(url3))
-        req3 = MockHttpRequest(url3)
+        req3 = MockRequest(url3)
 
         # test first match params
         route, handler = self.engine.routes.get('GET').match(url_q1, req1)

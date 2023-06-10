@@ -2,35 +2,35 @@ from json import dumps, load
 from unittest import TestCase
 from unittest.case import skip
 
-from routerling import Router
-from routerling import HttpRequest, ResponseWriter, Context
-from routerling.utils import preprocessor
+from heaven import App, Application, Router
+from heaven import Request, Response, Context
+from heaven.utils import preprocessor
 
 
 from tests import mock_scope, mock_body, mock_receive, mock_metadata
 
 
-def one(r: HttpRequest, w: ResponseWriter, c: Context):
+def one(r: Request, w: Response, c: Context):
     """Response should be tested in response class but setup of body done here"""
     w.body = 1000
 
 
-def two(r: HttpRequest, w: ResponseWriter, c: Context):
+def two(r: Request, w: Response, c: Context):
     w.body = 2000
 
 
-def three(r: HttpRequest, w: ResponseWriter, c: Context):
+def three(r: Request, w: Response, c: Context):
     w.body = 3000
 
 
-def four(r: HttpRequest, w: ResponseWriter, c: Context):
+def four(r: Request, w: Response, c: Context):
     w.body = 4000
 
 
 class TestRequest(TestCase):
     def setUp(self) -> None:
-        self.request = HttpRequest(
-            mock_scope, mock_body, mock_receive, mock_metadata, Router()
+        self.request = Request(
+            mock_scope, mock_body, mock_receive, mock_metadata, App()
         )
         return super().setUp()
 
