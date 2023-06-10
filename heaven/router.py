@@ -1,7 +1,12 @@
 from asyncio import gather
 from collections import deque
 from functools import wraps
+from http import HTTPStatus
 from inspect import iscoroutinefunction
+from os import path, getcwd
+
+from aiofiles import open as async_open_file
+from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from typing import Callable
 
@@ -33,15 +38,15 @@ from .constants import (
 
 from .errors import AbortException, SubdomainError, UrlDuplicateError, UrlError
 from .utils import preprocessor
-from .request import HttpRequest
-from .response import ResponseWriter
+from .request import Request
+from .response import Response
 from .context import Context
 
 
 methods = ['get', 'post', 'put', 'delete', 'connect', 'head', 'options', 'patch']
 
 
-Handler = Callable[[HttpRequest, ResponseWriter], object]
+Handler = Callable[[Request, Response], object]
 
 SEPARATOR = INDEX = "/"
 
@@ -65,13 +70,13 @@ def _notify(width=80, event=STARTUP): #pragma: nocover
 
 class Route(object):
     def __init__(self, route: str, handler: Callable, router: 'Router') -> None:
-        self.routerling_instance = router
+        self.heaven_instance = router
         self.parameterized = False
         self.route = route
         self.handler = handler
         self.children = {}
 
-    def match(self, routes: deque, r: HttpRequest):
+    def match(self, routes: deque, r: Request):
         matched: str = None
         route_at_deviation = None
         deviation_point: Route = None
@@ -117,7 +122,7 @@ class Route(object):
             return deviation_point.route, deviation_point.handler
         return node.route, node.handler
     
-    def not_found(self, r: HttpRequest, w: ResponseWriter, c: Context):
+    def not_found(self, r: Request, w: Response, c: Context):
         w.status = 404
         w.body = b'Not found'
 
@@ -134,7 +139,7 @@ class Routes(object):
         """
         method: one of POST, GET, OPTIONS... etc - i.e. the HTTP method
         route: the route url/endpoint
-        handler: function corresponding to the signature of a routerling handler
+        handler: function corresponding to the signature of a heaven handler
         """
         # ensure the method and route combo has not been already registered
         try: assert self.cache.get(method, {}).get(route) is None
@@ -161,18 +166,18 @@ class Routes(object):
         # get the length of the routes so we can use for validation checks in a loop later
         stop_at = len(routes) - 1
 
-        for index, routerling in enumerate(routes):
-            _routerling, _parameterized = _isparamx(routerling)
-            new_route_node = route_node.children.get(_routerling)
+        for index, heaven in enumerate(routes):
+            _heaven, _parameterized = _isparamx(heaven)
+            new_route_node = route_node.children.get(_heaven)
             if not new_route_node:
                 new_route_node = Route(None, None, router)
-                route_node.children[_routerling] = new_route_node
+                route_node.children[_heaven] = new_route_node
             
             route_node = new_route_node
             route_node.parameterized = _parameterized
 
             if index == stop_at:
-                assert route_node.handler is None, f'Handler already registered for route: ${_routerling}'
+                assert route_node.handler is None, f'Handler already registered for route: ${_heaven}'
                 route_node.route = route
                 route_node.handler = handler
     
@@ -217,9 +222,9 @@ class Routes(object):
             body += msg.get('body', b'')
             more = msg.get('more_body', False)
 
-        r = HttpRequest(scope, body, receive, metadata, application)
-        w = ResponseWriter()
+        r = Request(scope, body, receive, metadata, application)
         c = Context(application)
+        w = Response(context=c, app=application)
 
         method = scope.get('method')
         matched = None
@@ -246,7 +251,7 @@ class Routes(object):
         if not matched:
             return w
 
-        r._application = route_node.routerling_instance
+        r._application = route_node.heaven_instance
 
         # call all pre handle request hooks but first reset response_writer from not found to found
         w.status = 200; w.body = b''
@@ -279,9 +284,9 @@ class Routes(object):
 
         routes = route.strip(SEPARATOR).split(SEPARATOR)
         stop_at = len(routes) - 1
-        for index, routerling in enumerate(routes):
-            _routerling, _parameterized = _isparamx(routerling)
-            route_node = route_node.children.get(_routerling)
+        for index, heaven in enumerate(routes):
+            _heaven, _parameterized = _isparamx(heaven)
+            route_node = route_node.children.get(_heaven)
             if not route_node:
                 return
             if index == stop_at:
@@ -289,7 +294,7 @@ class Routes(object):
                 route_node.handler = None
                 self.cache[method][route] = None
 
-    async def xhooks(self, hookstore, matched, r: HttpRequest, w: ResponseWriter, c: Context):
+    async def xhooks(self, hookstore, matched, r: Request, w: Response, c: Context):
         hooks = set(hookstore.get(matched, []))
         """Here we are getting any and or all hooks that match the url verbatim as provided
         i.e. /url/:id or /url/:id/nested
@@ -323,6 +328,7 @@ class Router(object):
         self.subdomains[DEFAULT] = Routes()
         self._buckets = {}
         self._configuration = _get_configuration(configurator)
+        self._templater = None
 
     async def __call__(self, scope, receive, send):
         if scope['type'] == 'lifespan':
@@ -373,7 +379,7 @@ class Router(object):
             raise NameError('Subdomain does not exist - register subdomain on router first')
         engine.before = route, handler
 
-    def CONNECT(self, route: str, handler: Callable[[HttpRequest, ResponseWriter], object], subdomain=DEFAULT):
+    def CONNECT(self, route: str, handler: Callable[[Request, Response], object], subdomain=DEFAULT):
         self.abettor(METHOD_CONNECT, route, handler, subdomain)
 
     def CONFIG(self, config):
@@ -438,6 +444,27 @@ class Router(object):
             if first.lower() == STARTUP: self.initializers.append(closure(second))
             else: self.deinitializers.append(closure(second))
 
+    def TEMPLATES(self, folder: str, escape=None, asynchronous=True):
+        files_to_escape = escape or ['htm', 'html']
+        file_system_loader = FileSystemLoader(path.join(getcwd(), folder))
+        environment = Environment(loader=file_system_loader, autoescape=select_autoescape(files_to_escape))
+        environment.is_async = asynchronous
+        self._templater = environment
+
+    def ASSETS(self, folder: str, route='/public/*', subdomain=DEFAULT):
+        async def serve_assets(req: Request, res: Response, ctx: Context):
+            static_asset = f"{req.params.get('*', '')}"
+            remove_symlinks_if_present = path.realpath(getcwd())
+            location = path.join(remove_symlinks_if_present, f'{folder}')
+            target_resource_path = path.join(location, static_asset)
+            try:
+                async with async_open_file(target_resource_path, 'rb') as opened_asset_file:
+                    res.body = b''.join(await opened_asset_file.readlines())
+            except Exception as exc:
+                print(exc)
+                res.status = HTTPStatus.INTERNAL_SERVER_ERROR
+        self.GET(route, serve_assets, subdomain)
+
     async def _register(self):
         i = len(self.initializers)
         while self.initializers:
@@ -455,7 +482,7 @@ class Router(object):
             print(f'({index}): ', deinitializer.__name__, '\n')
             if iscoroutinefunction(deinitializer): await deinitializer(self)
             else: deinitializer(self)
-    
+
     def keep(self, key, value):
         self._buckets[key] = value
 
@@ -497,3 +524,8 @@ class Router(object):
                 self.subdomains[subdomain].afters[after] = [*engine.afters[after], *self.subdomains[subdomain].afters.get(after, [])]
             for before in engine.befores:
                 self.subdomains[subdomain].befores[before] = [*engine.befores[before], *self.subdomains[subdomain].befores.get(before, [])]
+
+
+class Application(Router):...
+class App(Router):...
+class Server(Router):...

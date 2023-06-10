@@ -30,3 +30,18 @@ pre {
 .o+.n{
     color: #864da0;
 }
+
+.termynal-comment {
+    color: #4a968f;
+    font-style: italic;
+    display: block;
+}
+  
+.termy {
+    /* For right to left languages */
+    direction: ltr;
+}
+  
+.termy [data-termynal] {
+    white-space: pre-wrap;
+}

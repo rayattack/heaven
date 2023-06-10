@@ -1,7 +1,15 @@
+from http import HTTPStatus
+from os import path
+
 from functools import singledispatch, update_wrapper
 from http import HTTPStatus
+from typing import TYPE_CHECKING
 
 from .constants import MESSAGE_NOT_FOUND, STATUS_NOT_FOUND
+from .context import Context
+from .tutorials import get_guardian_angel_html, NO_TEMPLATING
+if TYPE_CHECKING:
+    from router import App
 
 
 # For compatibility with older versions of python3 using this
@@ -29,8 +37,10 @@ def _(payload):
     return f'{payload}'.encode()
 
 
-class ResponseWriter():
-    def __init__(self):
+class Response():
+    def __init__(self, app: 'App', context: 'Context'):
+        self._app = app
+        self._ctx = context
         self._abort = False
         self._body = MESSAGE_NOT_FOUND.encode()
         self._deferred = []
@@ -80,6 +90,25 @@ class ResponseWriter():
         _encode = lambda k: k.encode('utf-8') if isinstance(k, str) else k
         value = _encode(key), _encode(val)
         self._headers.append(value)
+    
+    def file(self, name: str, folder='public'):
+        """Serve file from assets/public folder with correct file type from known_file_types"""
+        pass
+
+    async def render(self, name: str, **contexts):
+        """Serve html file walking up parent router/app tree until base parent if necessary"""
+        templater = self._app._templater
+        if not templater:
+            self.headers = 'Content-Type', 'text/html'
+            self.status = HTTPStatus.INTERNAL_SERVER_ERROR
+            self.body = get_guardian_angel_html('You did not enable templating', NO_TEMPLATING)
+            return
+        template = templater.get_template(name)
+        self.body = await template.render_async({'ctx': self._ctx, **contexts})
+
+    def renders(self, name: str):
+        """Synchronous version of render method above"""
+        pass
 
     @property
     def metadata(self):

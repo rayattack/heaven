@@ -1,13 +1,13 @@
 from typing import Any, TYPE_CHECKING
 
-from routerling.form import Form
+from heaven.form import Form
 
 
 if TYPE_CHECKING:
-    from routerling import Router
+    from heaven import Router
 
 
-class HttpRequest:
+class Request:
     def __init__(self, scope, body, receive, metadata=None, application=None):
         self._application = application
         self._body = body

@@ -1,7 +1,7 @@
 from typing import Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from routerling.request import HttpRequest
+    from heaven.request import Request
 
 
 ST = b'--'
@@ -30,7 +30,7 @@ def _keyxtractor(s) -> str:
 
 
 class Form(object):
-    def __init__(self, req: 'HttpRequest'):
+    def __init__(self, req: 'Request'):
         self._data = _reqparser(req)
 
     def __getattr__(self, name: str) -> Any:

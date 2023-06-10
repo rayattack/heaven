@@ -1,5 +1,5 @@
 # Minute 1
-We are assuming you have installed routerling via `pip install routerling`. If no, then go ahead and install it; If you have, then **the clock is ticking so** let's dive in.
+We are assuming you have installed heaven via `pip install heaven`. If no, then go ahead and install it; If you have, then **the clock is ticking so** let's dive in.
 
 ----------------------
 
@@ -9,23 +9,23 @@ We are assuming you have installed routerling via `pip install routerling`. If n
 import json
 from http import HTTPStatus
 
-from routerling import HttpRequest, ResponseWriter, Context
+from heaven import Request, Response, Context
 
-async def get_one_customer(r: HttpRequest, w: ResponseWriter, c: Context):
+async def get_one_customer(r: Request, w: Response, c: Context):
 	id = r.params.get('id')
 	w.status = HTTPStatus.CREATED
-	w.body = json.dumps({"message": f"routerling is easy for customer {id}"})
+	w.body = json.dumps({"message": f"heaven is easy for customer {id}"})
 
 ```
 
-As you can see above - your handler function can be async if you desire and must accept 3 arguments that will be injected by routerling. We'll get back to them in [Minute 3]()
+As you can see above - your handler function can be async if you desire and must accept 3 arguments that will be injected by heaven. We'll get back to them in [Minute 3]()
 
 -----------------------
 
-##### 2. Connect your handler to the routerling application
+##### 2. Connect your handler to the heaven application
 
 ```python
-from routerling import Router
+from heaven import Router
 
 # create the application
 router = Router()
@@ -47,7 +47,7 @@ Well now we have an application, but it is no fun if we can't execute/run/intera
 
 -----------------------
 
-##### 3. Run your routerling application
+##### 3. Run your heaven application
 
 ```sh
 # development
@@ -67,13 +67,13 @@ Replace the number after `-w` with the number of processors you desire to run yo
 &nbsp;
 
 # Minute 3 &amp; 4
-A promise is a promise. So it's time to tell you about routerling's objects. **_Don't fret - there are only 4 of them._**
+A promise is a promise. So it's time to tell you about heaven's objects. **_Don't fret - there are only 4 of them._**
 
 
-#### 1. HttpRequest
-All handlers will receive this as their first argument i.e. **`...(r: HttpRequest, ..., ...)`** and all HttpRequest objects come with the following bag of goodies.
+#### 1. Request
+All handlers will receive this as their first argument i.e. **`...(r: Request, ..., ...)`** and all Request objects come with the following bag of goodies.
 
-- **`r.app: Router`** -> An instance of the base routerling application
+- **`r.app: Router`** -> An instance of the base heaven application
 
 - **`r.body: dict`** -> The body sent along with the request
 
@@ -93,8 +93,8 @@ All handlers will receive this as their first argument i.e. **`...(r: HttpReques
 
 -----------------------
 
-#### 2. ResponseWriter
-All handlers receive this as the second argument i.e. **`...(..., w: ResponseWriter, ...)`** as ResponseWriters help with responding to HttpRequests.
+#### 2. Response
+All handlers receive this as the second argument i.e. **`...(..., w: Response, ...)`** as Responses help with responding to Requests.
 
 - **`w.abort(payload: any)`** -> If this is calledx then all `PRE` and `POST` [hooks]() will be aborted
 
@@ -114,7 +114,7 @@ All handlers receive this as the third argument i.e. **`...(..., ..., c: Context
 -----------------------
 
 #### 4. Router
-This is the last internal routerling object to grok. You can instantiate it with an optional configuration that is stored as the application's global state.
+This is the last internal heaven object to grok. You can instantiate it with an optional configuration that is stored as the application's global state.
 ```py
 router = Router({'secret_key': '...'})
 # or

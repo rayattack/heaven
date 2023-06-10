@@ -1,6 +1,6 @@
 from .context import Context
-from .request import HttpRequest
-from .response import ResponseWriter
+from .request import Request
+from .response import Response
 
 from .constants import METHODS
 
@@ -69,7 +69,7 @@ class MockContext(Context):
         self._data = payload
 
 
-class MockHttpRequest(HttpRequest):
+class MockRequest(Request):
     def __init__(
         self,
         url,
@@ -93,6 +93,6 @@ class MockHttpRequest(HttpRequest):
         super().__init__(scope, body, receive, metadata=metadata)
 
 
-class MockResponseWriter(ResponseWriter):
-    def __init__(self):
-        super().__init__()
+class MockResponse(Response):
+    def __init__(self, app, context):
+        super().__init__(app, context)

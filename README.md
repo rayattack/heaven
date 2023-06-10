@@ -8,14 +8,14 @@ Routerling is a very light layer around ASGI with support for application mounti
 ## Installling
 Install with [pip](https://pip.pypa.io/en/stable/getting-started/)
 ```sh
-$ pip install routerling
+$ pip install heaven
 ```
 
 ## A Simple Example
 <hr/>
 
 ```py
-from routerling import Router
+from heaven import Router
 
 
 async def index(req, res, ctx):
@@ -42,6 +42,6 @@ For guidance on how to make contributions to Routerling, see the [Contribution G
 
 ## Links
 
-- Documentation [Go To Docs](https://rayattack.github.io/routerling)
-- PyPi [https://pypi.org/project/routerling](https://pypi.org/project/routerling)
-- Source Code [Github](https://github.com/rayattack/routerling)
+- Documentation [Go To Docs](https://rayattack.github.io/heaven)
+- PyPi [https://pypi.org/project/heaven](https://pypi.org/project/heaven)
+- Source Code [Github](https://github.com/rayattack/heaven)

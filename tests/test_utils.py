@@ -1,8 +1,8 @@
 from unittest import TestCase
 
-from routerling.constants import DEFAULT
-from routerling.mocks import MOCK_SCOPE
-from routerling.utils import b_or_s, preprocessor
+from heaven.constants import DEFAULT
+from heaven.mocks import MOCK_SCOPE
+from heaven.utils import b_or_s, preprocessor
 
 
 class TestUtils(TestCase):

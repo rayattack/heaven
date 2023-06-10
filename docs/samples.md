@@ -1,6 +1,6 @@
 ## Before you go... How about some cheat codes ;-)
 
-We use routerling extensively to power numerous enterprise microservices and have collated some practices that might help you
+We use heaven extensively to power numerous enterprise microservices and have collated some practices that might help you
 get there even faster.
 
 
@@ -21,7 +21,7 @@ from ujson import dumps, loads
 def expects(schema: dict):
 	def wrapper(func):
 		@wraps(func)
-		async def delegate(r: HttpRequest, w: ResponseWriter, c: Context):
+		async def delegate(r: Request, w: Response, c: Context):
 			try: json = loads(r.body)
 			except:
 				return w.status = HTTPStatus.UNPROCESSABLE_ENTITY
@@ -50,7 +50,7 @@ def expects(schema: dict):
 	'required': ['age', 'email'],
 	'additionalProperties': false,
 })
-async def create_customer_order(r: HttpRequest, w: ResponseWriter, c: Context):
+async def create_customer_order(r: Request, w: Response, c: Context):
 	dbpool = r.app.peek('dbpool')
 	async with dbpool.acquire() as sqld:
 		try:
@@ -77,10 +77,10 @@ from jwt import decode
 
 
 def private(role: str):
-	"""RBAC Authorization, routerling makes it easy to also use ABAC"""
+	"""RBAC Authorization, heaven makes it easy to also use ABAC"""
 	def wrapper(func):
 		@wraps(func)
-		def delegate(r: HttpRequest, w: ResponseWriter, c: Context):
+		def delegate(r: Request, w: Response, c: Context):
 			dbpool: Pool = r.app.peek('dbpool')
 			with dbpool.acquire() as sqld:
 				try: roles = await sqld.fetchval("""
@@ -102,7 +102,7 @@ def private(role: str):
 def protected(func):
 	"""Authentication"""
 	@wraps(func)
-	def delegate(r: HttpRequest, w: ResponseWriter, c: Context):
+	def delegate(r: Request, w: Response, c: Context):
 		token = r.headers.get('authorization')
 		secret_key = r.app.CONFIG('SECRET_KEY')
 
