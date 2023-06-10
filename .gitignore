@@ -2,5 +2,5 @@ dist/
 .venv/
 .coverage
 .codecov.yml
-.site/
+site/
 __pycache__/
