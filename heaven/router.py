@@ -68,6 +68,13 @@ def _notify(width=80, event=STARTUP): #pragma: nocover
     drawline()
 
 
+def _set_content_type(req: Request, res: Response):
+    ct = 'Content-Type'
+    if(req.url.endswith('.css')): res.headers = ct, 'text/css'
+    elif(req.url.endswith('.svg')): res.headers = ct, 'image/svg+xml'
+    elif(req.url.endswith('.js')): res.headers = ct, 'text/javascript'
+
+
 class Route(object):
     def __init__(self, route: str, handler: Callable, router: 'Router') -> None:
         self.heaven_instance = router
@@ -459,6 +466,7 @@ class Router(object):
             target_resource_path = path.join(location, static_asset)
             try:
                 async with async_open_file(target_resource_path, 'rb') as opened_asset_file:
+                    _set_content_type(req, res)
                     res.body = b''.join(await opened_asset_file.readlines())
             except Exception as exc:
                 print(exc)
