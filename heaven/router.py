@@ -460,18 +460,25 @@ class Router(object):
             if first.lower() == STARTUP: self.initializers.append(closure(second))
             else: self.deinitializers.append(closure(second))
 
-    def TEMPLATES(self, folder: str, escape=None, asynchronous=True):
+    def TEMPLATES(self, folder: str, escape=None, asynchronous=True, relative_to=None):
+        # TODO: add warning if root folder slash is used
+        if relative_to: relative_file_path_folder = path.realpath(path.dirname(relative_to))
+        else: relative_file_path_folder = getcwd()
+
+        file_system_loader = FileSystemLoader(path.join(relative_file_path_folder, folder))
         files_to_escape = escape or ['htm', 'html']
-        file_system_loader = FileSystemLoader(path.join(getcwd(), folder))
         environment = Environment(loader=file_system_loader, autoescape=select_autoescape(files_to_escape))
         environment.is_async = asynchronous
         self._templater = environment
 
-    def ASSETS(self, folder: str, route='/public/*', subdomain=DEFAULT):
+    def ASSETS(self, folder: str, route='/public/*', subdomain=DEFAULT, relative_to=None):
+        # TODO: add warning if root folder slash is used
+        if relative_to: assets_folder_path = path.realpath(path.dirname(relative_to))
+        else: assets_folder_path = path.realpath(getcwd())
+
         async def serve_assets(req: Request, res: Response, ctx: Context):
             static_asset = f"{req.params.get('*', '')}"
-            remove_symlinks_if_present = path.realpath(getcwd())
-            location = path.join(remove_symlinks_if_present, f'{folder}')
+            location = path.join(assets_folder_path, f'{folder}')
             target_resource_path = path.join(location, static_asset)
             try:
                 async with async_open_file(target_resource_path, 'rb') as opened_asset_file:
@@ -479,7 +486,7 @@ class Router(object):
                     res.body = b''.join(await opened_asset_file.readlines())
             except Exception as exc:
                 print(exc)
-                res.status = HTTPStatus.INTERNAL_SERVER_ERROR
+                res.status = HTTPStatus.NOT_FOUND
         self.GET(route, serve_assets, subdomain)
 
     async def _register(self):
