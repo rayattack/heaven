@@ -17,6 +17,7 @@ class Request:
         self._scope = scope
         self._subdomain, self._headers = metadata
         self._params = None
+        self._mounted_from_application = None
 
     def _parse_qs(self):
         qs = self._scope.get("query_string")
@@ -83,6 +84,14 @@ class Request:
     @property
     def method(self):
         return self._scope.get("method")
+
+    @property
+    def mounted(self):
+        return self._mounted_from_application
+
+    @mounted.setter
+    def mounted(self, value: 'Router'):
+        self._mounted_from_application
 
     @property
     def params(self):

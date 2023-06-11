@@ -51,6 +51,15 @@ Handler = Callable[[Request, Response], object]
 SEPARATOR = INDEX = "/"
 
 
+def _closure_mounted_application(handler: Handler, mounted: 'Router'):
+    async def delegate(req: Request, res: Response, ctx: Context):
+        req.mounted = mounted
+        res.mounted = mounted
+        if iscoroutinefunction(handler): await handler(req, res, ctx)
+        else: handler(req, res, ctx)
+    return delegate
+
+
 def _get_configuration(configurator=None):
     if not configurator: return {}
     if isinstance(configurator, dict): return configurator
@@ -527,7 +536,8 @@ class Router(object):
                 for route in cache:
                     handler = cache[route]
                     self.subdomain(subdomain)
-                    self.abettor(method, route, handler, subdomain=subdomain, router=router if isolated else self)
+                    closured_handler = _closure_mounted_application(handler, router)
+                    self.abettor(method, route, closured_handler, subdomain=subdomain, router=router if isolated else self)
             for after in engine.afters:
                 self.subdomains[subdomain].afters[after] = [*engine.afters[after], *self.subdomains[subdomain].afters.get(after, [])]
             for before in engine.befores:

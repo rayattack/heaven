@@ -48,6 +48,7 @@ class Response():
         self._headers = []
         self._status = STATUS_NOT_FOUND
         self._template = None
+        self._mounted_from_application = None
 
     @MethodDispatch
     def abort(self, payload):
@@ -95,9 +96,27 @@ class Response():
         """Serve file from assets/public folder with correct file type from known_file_types"""
         pass
 
+    @property
+    def metadata(self):
+        return self._metadata
+
+    @metadata.setter
+    def metadata(self, value):
+        if not isinstance(value, dict): raise ValueError
+        self._metadata = value
+
+    @property
+    def mounted(self):
+        return self._mounted_from_application
+
+    @mounted.setter
+    def mounted(self, value: 'App'):
+        self._mounted_from_application = value
+
     async def render(self, name: str, **contexts):
         """Serve html file walking up parent router/app tree until base parent if necessary"""
-        templater = self._app._templater
+        # TODO: add support to customize order in **contexts later when you think of the api and make an atomic commit
+        templater = self.mounted._templater or self._app._templater
         if not templater:
             self.headers = 'Content-Type', 'text/html'
             self.status = HTTPStatus.INTERNAL_SERVER_ERROR
@@ -109,15 +128,6 @@ class Response():
     def renders(self, name: str):
         """Synchronous version of render method above"""
         pass
-
-    @property
-    def metadata(self):
-        return self._metadata
-
-    @metadata.setter
-    def metadata(self, value):
-        if not isinstance(value, dict): raise ValueError
-        self._metadata = value
 
     def redirect(self, location, permanent=False):
         if permanent: self.status = HTTPStatus.PERMANENT_REDIRECT
