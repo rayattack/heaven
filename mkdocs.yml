@@ -23,12 +23,17 @@ plugins:
       minify_html: true
 
 nav:
-  - Welcome To Routerling: api.md
-  - Table Schema Definition: default.md
-  - Results Object: samples.md
-  - SQL Command Reference:
-      - Function: quickstart.md
-  - Database Discovery: example.md
+  - Heaven v1.0: index.md
+  - Minute 1&colon; Quickstart: quickstart.md
+  - Minute 2&colon; Application: router.md
+  - Minute 3&colon; Request to Heaven: request.md
+  - Minute 4&colon; Response from Heaven: response.md
+  - Minute 5&colon; Context of Heaven: context.md
+  - Minute 6&colon; Rendering HTML: html.md
+  - Minute 7&colon; Coffee Break: coffee.md
+  - Minute 8&colon; Mounting Apps: examples.md
+  - Minute 9&colon; Code Snippets: snippets.md
+  - Minute 10&colon; Congratulate Yourself: congrats.md
 
 extra_css:
   - 'css/custom.css'

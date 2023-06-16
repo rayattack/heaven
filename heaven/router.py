@@ -94,9 +94,9 @@ class Route(object):
 
     def match(self, routes: deque, r: Request):
         matched: str = None
-        route_at_deviation = None
-        deviation_point: Route = None
         node: Route = self
+        route_at_deviation = '/'.join(routes)
+        deviation_point: Route = node.children.get('*')
         while routes:
             route = routes.popleft()
             current_node = node.children.get(route)
@@ -104,16 +104,16 @@ class Route(object):
                 # is there a parameterized child?
                 current_node = node.children.get(':')
                 if current_node:
-                    r.params = current_node.parameterized, route
                     """Store the label that immediately follows the ':' represented by paremeterized
                     and its value represented as route into request.params"""
+                    r.params = current_node.parameterized, route
 
                     if(node.children.get('*')):
+                        """If there was also a wildcard seeing as placeholder ':' takes precedence, then
+                        mark the point it deviated so it is possible to backtrack and use that point for
+                        matching if this path fumbles later"""
                         route_at_deviation = '/'.join([route, *routes])
                         deviation_point = node.children.get('*')
-                    """If there was also a wildcard seeing as placeholder ':' takes precedence, then
-                    mark the point it deviated so it is possible to backtrack and use that point for
-                    matching if this path fumbles later"""
 
                     node = current_node
                     continue
