@@ -17,7 +17,7 @@ class Request:
         self._scope = scope
         self._subdomain, self._headers = metadata
         self._params = None
-        self._parameterized = False
+        self._dirty = False
         self._mounted_from_application = None
 
     def _parse_qs(self):
@@ -96,9 +96,10 @@ class Request:
 
     @property
     def params(self):
-        if not self._parameterized:
-            self._params = self._parse_qs()
-            self._parameterized = True
+        if not self._dirty:
+            if not self._params: self._params = {}
+            self._params = {**self._params, **self._parse_qs()}
+            self._dirty = True
         return self._params
 
     @params.setter
