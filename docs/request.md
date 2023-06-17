@@ -1,70 +1,26 @@
-# Minute 9: Guidelines and Code Snippets
-Heaven is extremely unopinionated. Using python [decorators](); this section
-shows a few ways to combine standard python
-libraries like [pydantic](), [PyJWT]() etc. with heaven.
+# Minute 2
+A promise is a promise. So it's time to tell you about heaven's objects. **_Don't fret - there are only 4 of them._**
 
 
-## Authentication Example
+### Mambo number 1: Request
+All handlers will receive this as their first argument i.e. **`...(r: Request, ..., ...)`** and all Request objects come with the following bag of goodies.
 
-```py
-from functools import wraps
-from inspect import iscoroutinefunction
+- **`r.app: Router`** -> An instance of the base heaven application
 
-# typing is amazing let's use it as much as we can
-from heaven import Context, Request, Response
+- **`r.body: bytes`** -> The body sent along with the request
 
+- **`r.cookies: dict`** -> All the cookies sent with request **_[keys in lowercase]_**
 
-def protect(func):
-    @wraps(func)
-    async def delegate(req: Request, res: Response, ctx: Context):
-        token = req.headers.get('authorization')
+- **`r.headers: dict`** -> All the headers sent with request **_[keys in lowercase]_**
 
-        # use your preferred jwt or other validation lib/scheme here
-        if not token:
-            res.status = HTTPStatus.UNAUTHORIZED
-            res.body = 'Whatever body you want'
-            return
+- **`r.method: str`** -> `GET`, `POST`, `DELETE`? What method type is the http request
 
-        ctx.keep('user', {...})
-        if iscoroutinefunction(handler): await func(req, res, ctx)
-        else: func(req, res, ctx)
-    return delegate
+- **`r.params: dict`** -> Querystring parameters and url masks `/customers/:param1` parsed into a dictionary
 
+- **`r.querystring: str`** -> The part after the `?` i.e. example.com**?age=34** parsed in comma separated string form
 
-# use decorator to protect handler(s) of choice
-@protect
-async def get_customer_info(req: Request, res: Response, ctx: Context):
-    res.body = {}
-```
+- **`r.subdomain: str`** -> If request was made to a subdomain i.e. `www.example.org` or `api.example.org` then this holds the subdomain value e.g. `www` and `api`.
 
+- **`r.url: str`** -> The url that matched to this handler as sent by the client
 
-## Data Validation Example
-
-```py
-from heaven import ...  # necessary imports here
-from pydantic import BaseModel
-
-
-class Guest(BaseModel):
-    email: EmailStr
-    password: str
-
-
-def expects(model: BaseModel):
-    async def delegate(req: Request, res: Response, ctx: Context):
-        try:
-            data = loads(req.body)
-            guest = Guest(**data)
-        except:  # be more specific with exceptions in production code
-            res.status = HTTPStatus.BAD_REQUEST
-            return
-        ctx.keep('guest', Guest)
-    return delegate
-
-
-@expects(Guest)
-async def do_login_with_email(req: Request, res: Response, ctx: Context):
-    guest: Guest = ctx.guest
-    print(guest.email)
-    print(guest.password)
-```
+-----------------------

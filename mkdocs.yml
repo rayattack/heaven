@@ -25,10 +25,10 @@ plugins:
 nav:
   - Heaven v1.0: index.md
   - Minute 1&colon; Quickstart: quickstart.md
-  - Minute 2&colon; Application: router.md
-  - Minute 3&colon; Request to Heaven: request.md
-  - Minute 4&colon; Response from Heaven: response.md
-  - Minute 5&colon; Context of Heaven: context.md
+  - Minute 2&colon; Request to Heaven: request.md
+  - Minute 3&colon; Response from Heaven: response.md
+  - Minute 4&colon; Context of Heaven: context.md
+  - Minute 5&colon; Application: router.md
   - Minute 6&colon; Rendering HTML: html.md
   - Minute 7&colon; Coffee Break: coffee.md
   - Minute 8&colon; Mounting Apps: examples.md

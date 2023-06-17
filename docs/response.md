@@ -1,70 +1,34 @@
-# Minute 9: Guidelines and Code Snippets
-Heaven is extremely unopinionated. Using python [decorators](); this section
-shows a few ways to combine standard python
-libraries like [pydantic](), [PyJWT]() etc. with heaven.
+#### 2. Response
+All handlers receive this as the second argument i.e. **`...(..., w: Response, ...)`**
 
+The `Response` object provides a ton of goodies to help with responding to http requests.
 
-## Authentication Example
+-----------------------
 
+- **`res.body: any = 'hello'`** -> This will be sent back as the body of the response
+
+- **`res.headers: tuple[2] | list[2]`** -> How headers are set i.e.
+        ```py
+        w.headers = 'Set-Cookie', 'Token=12345; Max-Age=8700; Secure; HttpOnly'
+        ```
+
+- **`res.status: int`** -> HTTP status code to be sent back with the response
+
+- **`res.html(html: str, **context): Coroutine[str]`** -> Asynchronous function to help with rendering html. See [rendering html tutorial](html.md)
+
+- **`res.redirect(location: str)`** -> Types this http redirect code for you behind the scenes.
+        ```py
+        res.status = HTTPStatus.TEMPORARY_REDIRECT
+        res.headers = 'Location', '/location'
+        ```
+
+- **`res.abort(payload: any)`** -> If this is called then all `PRE` and `POST` [hooks]() will be aborted
+
+-----------------------
+Here is a sample request handler function that shows **almost all** the functionality the `Request` object provides.
 ```py
-from functools import wraps
-from inspect import iscoroutinefunction
-
-# typing is amazing let's use it as much as we can
-from heaven import Context, Request, Response
-
-
-def protect(func):
-    @wraps(func)
-    async def delegate(req: Request, res: Response, ctx: Context):
-        token = req.headers.get('authorization')
-
-        # use your preferred jwt or other validation lib/scheme here
-        if not token:
-            res.status = HTTPStatus.UNAUTHORIZED
-            res.body = 'Whatever body you want'
-            return
-
-        ctx.keep('user', {...})
-        if iscoroutinefunction(handler): await func(req, res, ctx)
-        else: func(req, res, ctx)
-    return delegate
-
-
-# use decorator to protect handler(s) of choice
-@protect
-async def get_customer_info(req: Request, res: Response, ctx: Context):
-    res.body = {}
-```
-
-
-## Data Validation Example
-
-```py
-from heaven import ...  # necessary imports here
-from pydantic import BaseModel
-
-
-class Guest(BaseModel):
-    email: EmailStr
-    password: str
-
-
-def expects(model: BaseModel):
-    async def delegate(req: Request, res: Response, ctx: Context):
-        try:
-            data = loads(req.body)
-            guest = Guest(**data)
-        except:  # be more specific with exceptions in production code
-            res.status = HTTPStatus.BAD_REQUEST
-            return
-        ctx.keep('guest', Guest)
-    return delegate
-
-
-@expects(Guest)
-async def do_login_with_email(req: Request, res: Response, ctx: Context):
-    guest: Guest = ctx.guest
-    print(guest.email)
-    print(guest.password)
+async def hello(req, res: Response, ctx):
+    res.status = HTTPStatus.CREATED
+    res.headers = 'Content-Type', 'application/json'
+    res.body = dumps({'message': 'Why hello there...'})
 ```
