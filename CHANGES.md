@@ -3,7 +3,7 @@
 
 Released Jun 25, 2023
 
-- Add exception handling to ignore badly http cookie malformation errors
+- Add exception handling to ignore http cookie malformation errors
 
 &nbsp;
 
@@ -14,7 +14,10 @@ Released Jun 25, 2023
 
 Released Jun 25, 2023
 
-- Add exception handling to ignore http cookie malformation errors
+
+- Fix bug where params causes images not to load due to it's route traversal utilisation
+
+- Fix parameterisation of querystring not happening when `:dynamic` route param already exists
 
 &nbsp;
 
@@ -24,9 +27,7 @@ Released Jun 25, 2023
 
 Released Jun 17, 2023
 
-- Fix bug where params causes images not to load due to it's route traversal utilisation
-
-- Fix parameterisation of querystring not happening when `:dynamic` route param already exists
+- Add mount isolation support for router aggregation/code separation
 
 &nbsp;
 
