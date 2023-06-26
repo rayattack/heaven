@@ -6,6 +6,14 @@ NO_TEMPLATING = '''
 '''
 
 
+ASYNC_RENDER = '''
+    # html template rendering is async by default, don't disable it to use async rendering
+    # i.e. don't do this ↓↓↓↓↓
+    
+    application.TEMPLATES('templates', asynchronous=False)
+'''
+
+
 SYNC_RENDER = '''
     # to render files synchronously disable async renderer
     

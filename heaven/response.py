@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 from .constants import MESSAGE_NOT_FOUND, STATUS_NOT_FOUND
 from .context import Context
-from .tutorials import get_guardian_angel_html, NO_TEMPLATING, SYNC_RENDER
+from .tutorials import get_guardian_angel_html, ASYNC_RENDER, NO_TEMPLATING, SYNC_RENDER
 if TYPE_CHECKING:
     from router import App
 
@@ -96,10 +96,6 @@ class Response():
         _encode = lambda k: k.encode('utf-8') if isinstance(k, str) else k
         value = _encode(key), _encode(val)
         self._headers.append(value)
-    
-    def file(self, name: str, folder='public'):
-        """Serve file from assets/public folder with correct file type from known_file_types"""
-        pass
 
     @property
     def metadata(self):
@@ -125,6 +121,10 @@ class Response():
             templater = self.mouted._templater
         if not templater:
             return _get_guardian_angel(self, 'You did not enable templating', NO_TEMPLATING)
+        
+        if not templater.is_async:
+            return _get_guardian_angel(self, 'Trying to use Sync HTML Renderer to render HTML Async', ASYNC_RENDER)
+
         template = templater.get_template(name)
         self.body = await template.render_async({'ctx': self._ctx, **contexts})
 
