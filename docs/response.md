@@ -18,7 +18,7 @@ the following `properties` & `methods` to help with responding to http requests.
 
 - **`res.status: int`** -> HTTP status code to be sent back with the response
 
-- **`res.html(html: str, **context): Coroutine[str]`** -> Asynchronous function to help with
+- **`res.render(html: str, **context): Coroutine[str]`** -> Asynchronous function to help with
         rendering html. See [rendering html tutorial](html.md)
 
 - **`res.redirect(location: str)`** -> This does this for you behind the scenes.
