@@ -1,4 +1,9 @@
-# Minute 5: Router | Application | App
+`View Source Code: ` [`Open on GitHub`](https://github.com/rayattack/heaven/blob/main/heaven/router.py)
+
+# Minute 5
+
+
+### Object \#4: Router | Application | App
 A heaven `App`, `Application`, or `Router` can be imported by any of it's aliases and is what you deploy.
 
 -------------------------
@@ -40,20 +45,35 @@ router.AFTER('/orders/*', handler)
 
 #### Additional Router APIs
 
-- **`router.AFTER(url: str, handler: func, subdomain: str)`** -> Get a config value from the global store/state register
+- **`router.AFTER(url: str, handler: func, subdomain: str)`** -> This is called a hook - a function that is hooked to run **after** all matching routes.
+    ```py
+    message = 'I will run after all /v1/* routes'
+    router.AFTER('/v1/*', lambda req, res, ctx: print(message))
 
-- **`router.BEFORE(url: str, handler: func, subdomain: str)`** -> Get a config value from the global store/state register
+    # will run after
+    router.GET('/v1/customers', ...)
+    router.POST('/v1/leads', ...)
 
-- **`router.GET(url: str, handler: func, subdomain: str)`** -> Registers your custom handlers/functions to be invoked when a url match is made. `POST`, `PUT`, `PATCH`, `DELETE` etc.
-all work in similar fashion. The `subdomain` optional argument limits the matching to a subdomain.
+    # but not after
+    router.GET('/v2/customers')
+    ```
+
+- **`router.BEFORE(url: str, handler: func, subdomain: str)`** -> Same as **after hook above** - but runs before all matching routes.
+
+- **`router.GET(url: str, handler: func, subdomain: str)`** -> Registers your custom handlers/functions to be invoked when a request matches
+    the provided url. **All other HTTP** methods `POST`, `PUT`, `PATCH`, `DELETE` etc. 
+    work in similar fashion. The `subdomain` optional argument limits the matching to a subdomain.
 
 - **`router.HTTP(url: str, handler: func)`** -> Registers your custom handlers/functions to all HTTP methods i.e. GET, PUT, POST, PUT, PATCH instead of doing it individually.
 
 
-## Heaven is a Store
+## Heaven is a Global Config & Store
 
+### Global Config
 ```py
+router = Router({'secret_key': 'not so secret...'})
 ```
+This will be available in all handlers via the `req.app.CONFIG
 
 #### Additional Store/State APIs
 
@@ -66,15 +86,7 @@ all work in similar fashion. The `subdomain` optional argument limits the matchi
 -----------------------
 
 
-# Minute 5
-That was quick wasn't it? even less than a minute?
-
-Well now we have an application, but how can you customize your heaven application or even run it in production.
-
-
------------------------
-
-##### 1. Customizing Your Heaven Application
+##### Customizing Your Heaven Application
 
 ```py
 # development

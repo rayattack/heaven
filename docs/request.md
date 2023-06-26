@@ -1,6 +1,7 @@
+`View Source Code: ` [`Open on GitHub`](https://github.com/rayattack/heaven/blob/main/heaven/request.py)
+
 # Minute 2
 A promise is a promise. So it's time to tell you about heaven's objects. **_Don't fret - there are only 4 of them._**
-
 
 ### Object \#1: Request
 All handlers will receive this as their first argument i.e. **`...(req: Request, ..., ...)`** -
@@ -52,4 +53,4 @@ and all Request objects come with the following helper properties (bag of goodie
 
 &nbsp;
 
-[Next: Requests to Heaven](request.md)
+[Next: Response from Heaven](response.md)

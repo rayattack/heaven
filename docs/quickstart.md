@@ -12,11 +12,10 @@ from http import HTTPStatus
 
 from heaven import Request, Response, Context
 
-async def get_one_customer(r: Request, w: Response, c: Context):
-	id = r.params.get('id')
-	w.status = HTTPStatus.CREATED
-	w.body = json.dumps({"message": f"heaven is easy for customer {id}"})
-
+async def get_one_customer(req: Request, res: Response, ctx: Context):
+	id = req.params.get('id')
+	res.status = HTTPStatus.CREATED
+	res.body = json.dumps({"message": f"heaven is easy for customer {id}"})
 ```
 
 As you can see above - your handler functions can also be async, and must accept 3 arguments that will be injected by heaven. We'll get to
