@@ -59,7 +59,7 @@ class Request:
                 return self._cookies
             cookies = cookiestring.split("; ")
             for cookie in cookies:
-                try: k, v = cookie.split("=")
+                try: k, v = cookie.split("=", 1)
                 except: pass
                 else: csd[k.lower()] = v
             self._cookies = csd
