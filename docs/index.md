@@ -42,6 +42,58 @@ These are also Heaven's goals.
 Because we needed something small enough to be learnt completely by new engineers in less than 10
 minutes. Complete mastery with no gray spots.
 
+&nbsp;
+
+## Don't Have 10 Minutes To Spare?
+----------------------------------------------
+#### Here's a quick crash course on heaven in 5 minutes
+
+
+##### 1. Create a handler function
+
+```python
+import json
+from http import HTTPStatus
+
+from heaven import Request, Response, Context
+
+async def get_one_customer(r: Request, w: Response, c: Context):
+	id = r.params.get('id')
+	w.status = HTTPStatus.CREATED
+	w.body = json.dumps({"message": f"heaven is easy for customer {id}"})
+
+```
+
+
+##### 2. Connect your handler to the heaven application
+
+```python
+from heaven import Router
+
+# create the application
+router = Router()
+
+# connect it to a route
+router.GET('/v1/customers/:id', get_one_customer)
+router.POST('/v1/customers', lambda req, res, ctx:...)
+router.DELETE('/v1/customers/:id', lambda req, res, ctx:...)
+```
+
+All HTTP methods i.e. `PUT`, `PATCH`, `OPTIONS` etc. are all supported
+
+
+
+##### 3. Run With Gunicorn or Uvicorn
+
+```sh
+# assuming your my_app.py is in a file called app.py
+uvicorn my_app:router  --reload --port 9000
+```
+
+
+&nbsp;
+
+-----------------------------------------------
 
 ## Okay, What Next?
 

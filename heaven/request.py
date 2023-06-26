@@ -59,8 +59,9 @@ class Request:
                 return self._cookies
             cookies = cookiestring.split("; ")
             for cookie in cookies:
-                k, v = cookie.split("=")
-                csd[k] = v
+                try: k, v = cookie.split("=")
+                except: pass
+                else: csd[k] = v
             self._cookies = csd
         return self._cookies
 
@@ -83,6 +84,11 @@ class Request:
         return self._headers
 
     @property
+    def server(self) -> str:
+        server = self._scope.get('server')
+        return f'{server[0]}:{server[1]}'
+
+    @property
     def method(self):
         return self._scope.get("method")
 
@@ -100,7 +106,7 @@ class Request:
             if not self._params: self._params = {}
             self._params = {**self._params, **self._parse_qs()}
             self._dirty = True
-        return self._params
+        return self._params or {}
 
     @params.setter
     def params(self, pair):

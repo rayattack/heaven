@@ -1,10 +1,10 @@
-# How To Contribute to Routerling!!!
+# How To Contribute to Heaven
 
-Thank you so much for considering to use the most valuable resource in the universe - your time to help move open source forward through **Routerling**.
+Thank you so much for considering to use the most valuable resource in the universe - your time to help move open source forward through **Heaven**.
 
 ## Support Questions
-Please don't use the issue tracker for this. The issue tracker is a tool to address bugs and feature request in Routerling itself. Use any of the following
-resources for questions about Routerling or issues with your own code:
+Please don't use the issue tracker for this. The issue tracker is a tool to address bugs and feature request in Heaven itself. Use any of the following
+resources for questions about Heaven or issues with your own code:
 
 - The mailing list heaven@python.org for long term discussions or larger issues.
 - Ask on [Stack Overflow](https://www.stackoverflow.com). Search with Google or Bing using: site:stackoverflow.com heaven {search term, exception message etc.}
@@ -17,7 +17,7 @@ Include the following information in your ticket:
 - What you expected to happen
 - What happened instead
 - Where possible [A Small Reference Example](https://stackoverflow.com/help/minimal-reproducible-example) to help troubleshoot the issue and or ease the process of ensuring the problem is not from your code.
-- List your Python and Routerling versions. Where possible, check if the issue has already been fixed in newer code/releases in the repository/pypi.
+- List your Python and Heaven versions. Where possible, check if the issue has already been fixed in newer code/releases in the repository/pypi.
 
 ## Submitting Patches
 If you could not find an already open issue for what you want to submit, please open one for discussion before working on a PR. You can work on any issue that does not have an open PR linked to it, or a maintainer assigned to it.
