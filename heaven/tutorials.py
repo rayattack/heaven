@@ -6,6 +6,13 @@ NO_TEMPLATING = '''
 '''
 
 
+SYNC_RENDER = '''
+    # to render files synchronously disable async renderer
+    
+    application.TEMPLATES('templates', asynchronous=False)
+'''
+
+
 def get_guardian_angel_html(error: str, snippet: str):
     return f'''
     <html>

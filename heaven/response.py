@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 from .constants import MESSAGE_NOT_FOUND, STATUS_NOT_FOUND
 from .context import Context
-from .tutorials import get_guardian_angel_html, NO_TEMPLATING
+from .tutorials import get_guardian_angel_html, NO_TEMPLATING, SYNC_RENDER
 if TYPE_CHECKING:
     from router import App
 
@@ -35,6 +35,11 @@ def _(payload: str):
 @_body.register(float)
 def _(payload):
     return f'{payload}'.encode()
+
+def _get_guardian_angel(res: 'Response', error, snippet: str):
+    res.headers = 'Content-Type', 'text/html'
+    res.status = HTTPStatus.INTERNAL_SERVER_ERROR
+    res.body = get_guardian_angel_html(error, snippet)
 
 
 class Response():
@@ -115,19 +120,26 @@ class Response():
 
     async def render(self, name: str, **contexts):
         """Serve html file walking up parent router/app tree until base parent if necessary"""
-        # TODO: add support to customize order in **contexts later when you think of the api and make an atomic commit
-        templater = self.mounted._templater or self._app._templater
+        templater = self._app._templater
+        if self.mounted and not templater:
+            templater = self.mouted._templater
         if not templater:
-            self.headers = 'Content-Type', 'text/html'
-            self.status = HTTPStatus.INTERNAL_SERVER_ERROR
-            self.body = get_guardian_angel_html('You did not enable templating', NO_TEMPLATING)
-            return
+            return _get_guardian_angel(self, 'You did not enable templating', NO_TEMPLATING)
         template = templater.get_template(name)
         self.body = await template.render_async({'ctx': self._ctx, **contexts})
 
-    def renders(self, name: str):
+    def renders(self, name: str, **contexts):
         """Synchronous version of render method above"""
-        pass
+        templater = self._app._templater
+        if self.mounted and not templater:
+            templater = self.mouted._templater
+        if not templater:
+            return _get_guardian_angel(self, 'You did not enable templating', NO_TEMPLATING)
+        
+        if templater.is_async:
+            return _get_guardian_angel(self, 'Trying to use Async HTML Renderer to render Sync HTML', SYNC_RENDER)
+        template = templater.get_template(name)
+        self.body = template.render({'ctx': self._ctx, **contexts})
 
     def redirect(self, location, permanent=False):
         if permanent: self.status = HTTPStatus.PERMANENT_REDIRECT

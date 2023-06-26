@@ -1,6 +1,18 @@
 #### VERSION 0.0.9
 ------------------
 
+Unreleased Jun 25, 2023
+
+- Fix cookie partioning logic to process cookie strings that contain the `=` symbol
+- Add synchronous rendering support with Guardian Angel tip for toggling between sync and async renderer
+- Remove unimplemented `Response.file` method 
+
+&nbsp;
+
+
+#### VERSION 0.0.9
+------------------
+
 Released Jun 25, 2023
 
 - Add exception handling to ignore http cookie malformation errors
