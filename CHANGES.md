@@ -5,7 +5,8 @@ Unreleased Jun 25, 2023
 
 - Fix cookie partioning logic to process cookie strings that contain the `=` symbol
 - Add synchronous rendering support with Guardian Angel tip for toggling between sync and async renderer
-- Remove unimplemented `Response.file` method 
+- Remove unimplemented `Response.file` method
+- Add support for deferred callables receiving instance of `Application | Router` as sole argument
 
 &nbsp;
 
