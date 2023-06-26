@@ -14,7 +14,7 @@ Released Jun 25, 2023
 
 Released Jun 25, 2023
 
-- Add exception handling to ignore badly http cookie malformation errors
+- Add exception handling to ignore http cookie malformation errors
 
 &nbsp;
 
