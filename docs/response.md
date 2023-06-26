@@ -11,7 +11,7 @@ the following `properties` & `methods` to help with responding to http requests.
 
 - **`res.body: any = 'hello'`** -> Sets the body that will be sent back with the response object.
 
-- **`res.defer: Callable = lambda router: isinstance(router, Router)`** -> Registers a function to be called after the
+- **`res.defer(func: Callable)`** -> Registers a function to be called after the
         response is sent to the client. Callable must accept a single parameter of `type: Router | Application`
         ```py
         def send_sms_after_request(router: Router):
