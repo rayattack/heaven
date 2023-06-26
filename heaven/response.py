@@ -106,18 +106,10 @@ class Response():
         if not isinstance(value, dict): raise ValueError
         self._metadata = value
 
-    @property
-    def mounted(self):
-        return self._mounted_from_application
-
-    @mounted.setter
-    def mounted(self, value: 'App'):
-        self._mounted_from_application = value
-
     async def render(self, name: str, **contexts):
         """Serve html file walking up parent router/app tree until base parent if necessary"""
         templater = self._app._templater
-        if self.mounted and not templater:
+        if self._mounted_from_application and not templater:
             templater = self.mouted._templater
         if not templater:
             return _get_guardian_angel(self, 'You did not enable templating', NO_TEMPLATING)
@@ -131,7 +123,7 @@ class Response():
     def renders(self, name: str, **contexts):
         """Synchronous version of render method above"""
         templater = self._app._templater
-        if self.mounted and not templater:
+        if self._mounted_from_application and not templater:
             templater = self.mouted._templater
         if not templater:
             return _get_guardian_angel(self, 'You did not enable templating', NO_TEMPLATING)

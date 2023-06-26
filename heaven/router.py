@@ -54,7 +54,7 @@ SEPARATOR = INDEX = "/"
 def _closure_mounted_application(handler: Handler, mounted: 'Router'):
     async def delegate(req: Request, res: Response, ctx: Context):
         req.mounted = mounted
-        res.mounted = mounted
+        res._mounted_from_application = mounted
         if iscoroutinefunction(handler): await handler(req, res, ctx)
         else: handler(req, res, ctx)
     return delegate
