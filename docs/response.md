@@ -11,6 +11,20 @@ the following `properties` & `methods` to help with responding to http requests.
 
 - **`res.body: any = 'hello'`** -> Sets the body that will be sent back with the response object.
 
+- **`res.defer: Callable = 'hello'`** -> Registers a function to be called after the response is sent to the client.
+        Method must accept a single parameter of `type: Router | Application`
+        ```py
+        def send_sms_after_request(router: Router):
+                twilio = router.peek('twilio')
+                twilio.messages.create(to='+123456', from='+123456', body='Hi!')
+
+
+        async def create_order(req, res, ctx):
+                res.defer = send_sms_after_request
+                res.defer = lambda r: print('I will be called too...')
+                res.status = 202
+        ```
+
 - **`res.headers: tuple[2] | list[2]`** -> How headers are set i.e.
         ```py
         res.headers = 'Set-Cookie', 'Token=12345; Max-Age=8700; Secure; HttpOnly'
