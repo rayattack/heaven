@@ -372,7 +372,7 @@ class Router(object):
 
         # add background tasks
         if response.deferred:
-            await gather(*[func() for func in response._deferred])
+            await gather(*[func(self) for func in response._deferred])
 
     def abettor(self, method: str, route: str, handler: Handler, subdomain=DEFAULT, router = None):
         if not route.startswith('/'): raise UrlError

@@ -1,5 +1,6 @@
 from json import dumps
 from http import HTTPStatus as status
+from mock import Mock, MagicMock
 from unittest import TestCase
 
 from heaven import Response, Router, Context

@@ -29,6 +29,33 @@ class AsyncRouterTest(IsolatedAsyncioTestCase):
         self.engine = self.router.subdomains.get(DEFAULT)
         return super().setUp()
     
+    async def test_deferred_forwarded(self):
+        receiver = _get_mock_receiver()
+        mocked = Mock()
+        def add_deferral(req, res, ctx):
+            res.defer(mocked)
+
+        scope = {**self.scope, 'path': '/v1/mocks'}
+        self.router.GET('/v1/mocks', add_deferral)
+        metadata = DEFAULT, None # i.e. subdomain and headers
+        response = await self.engine.handle(scope, receiver, None, metadata, self.router)
+        self.assertNotEqual(response._deferred, [])
+        self.assertEqual(response._deferred[0], mocked)
+        self.assertEqual(response.deferred, 1)
+    
+    async def test_deferred_forwarded(self):
+        receiver = _get_mock_receiver()
+        mocked = AsyncMock()
+        sender = AsyncMock()
+        def add_deferral(req, res, ctx):
+            res.defer(mocked)
+
+        scope = {**self.scope, 'path': '/v1/deferreds'}
+        self.router.GET('/v1/deferreds', add_deferral)
+        await self.router(scope, receiver, sender)
+        mocked.assert_called_once()
+        mocked.assert_called_once_with(self.router)
+
     async def test_handle(self):
         receiver = _get_mock_receiver()
         metadata = DEFAULT, None # i.e. subdomain and headers
