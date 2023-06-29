@@ -19,7 +19,7 @@ async def get_one_customer(req: Request, res: Response, ctx: Context):
 ```
 
 As you can see above - your handler functions can also be async, and must accept 3 arguments that will be injected by heaven. We'll get to
-them in [Minute 1](request.md), [Minute 2](response.md) and [Minute 3](context.md).
+them in [Minute 2](request.md), [Minute 3](response.md) and [Minute 4](context.md).
 
 -----------------------
 
