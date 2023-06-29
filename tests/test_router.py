@@ -65,7 +65,24 @@ class AsyncRouterTest(IsolatedAsyncioTestCase):
         self.assertIsInstance(response, Response)
 
         self.assertEqual(response.body, dumps({**loads(MOCK_BODY.get('body')), 'message': 'five...'}).encode())
-    
+
+    async def test_templates(self):
+        metadata = DEFAULT, None
+        receiver = _get_mock_receiver()
+        router = Application()
+        engine = router.subdomains.get(DEFAULT)
+        router.GET('/v1/customers', lambda r,w,c: w.renders('index.html'))
+        with self.assertRaises(AttributeError):
+            # template needs to be activated before use
+            response = await engine.handle(self.scope, receiver, None, metadata)
+        router.TEMPLATES('docs', asynchronous=False)
+        response = await engine.handle(self.scope, receiver, None, metadata, router)
+        self.assertIsInstance(response, Response)
+        self.assertEqual(len(response.headers), 1)
+        self.assertTrue('Go big or go home...' in response.body.decode())
+        _, text_html = response.headers[0]
+        self.assertEqual(text_html, b'text/html')
+
     @patch('heaven.router._notify')
     async def test_call(self, _notify):
         mock = Mock()

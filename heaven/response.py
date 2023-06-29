@@ -109,6 +109,7 @@ class Response():
     async def render(self, name: str, **contexts):
         """Serve html file walking up parent router/app tree until base parent if necessary"""
         templater = self._app._templater
+        self.headers = 'content-type', 'text/html'
         if self._mounted_from_application and not templater:
             templater = self.mounted._templater
         if not templater:
@@ -123,6 +124,7 @@ class Response():
     def renders(self, name: str, **contexts):
         """Synchronous version of render method above"""
         templater = self._app._templater
+        self.headers = 'content-type', 'text/html'
         if self._mounted_from_application and not templater:
             templater = self.mounted._templater
         if not templater:

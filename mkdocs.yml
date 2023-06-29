@@ -23,7 +23,7 @@ plugins:
       minify_html: true
 
 nav:
-  - Heaven v1.0: index.md
+  - Heaven v0.1.0: index.md
   - Min. 1&colon; Quickstart: quickstart.md
   - Min. 2&colon; Request to Heaven: request.md
   - Min. 3&colon; Response from Heaven: response.md
