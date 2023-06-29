@@ -110,7 +110,7 @@ class Response():
         """Serve html file walking up parent router/app tree until base parent if necessary"""
         templater = self._app._templater
         if self._mounted_from_application and not templater:
-            templater = self.mouted._templater
+            templater = self.mounted._templater
         if not templater:
             return _get_guardian_angel(self, 'You did not enable templating', NO_TEMPLATING)
         
@@ -124,7 +124,7 @@ class Response():
         """Synchronous version of render method above"""
         templater = self._app._templater
         if self._mounted_from_application and not templater:
-            templater = self.mouted._templater
+            templater = self.mounted._templater
         if not templater:
             return _get_guardian_angel(self, 'You did not enable templating', NO_TEMPLATING)
         
