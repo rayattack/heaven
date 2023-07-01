@@ -34,6 +34,8 @@ nav:
   - Min. 8&colon; Mounting Apps: mount.md
   - Min. 9&colon; Code Snippets: snippets.md
   - Min. 10&colon; Congratulate Yourself: congrats.md
+  - Optional&colon; Full API Reference: reference.md
+  - Optional&colon; Library of Examples: examples.md
 
 extra_css:
   - 'css/custom.css'

@@ -46,3 +46,4 @@ app = Application()
 app.mount(api, isolated=True)
 app.mount(pages, isolated=False)
 ```
+**isolation=False** means no middlewares, config, or state is shared between router instances - only routes will be mounted.
