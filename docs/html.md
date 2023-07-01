@@ -1,70 +1,35 @@
-# Minute 9: Guidelines and Code Snippets
-Heaven is extremely unopinionated. Using python [decorators](); this section
-shows a few ways to combine standard python
-libraries like [pydantic](), [PyJWT]() etc. with heaven.
+# Minute 6: Rendering HTML
+Heaven uses [Jinja](https://jinja.palletsprojects.com/en/3.1.x/) as its templating engine. This however
+does not stop you from rolling your own preferred template engine.
 
-
-## Authentication Example
+You can render html templates in `asynchronous` or `asyncrhonous=False` modes.
 
 ```py
-from functools import wraps
-from inspect import iscoroutinefunction
+from routerling import Application
 
-# typing is amazing let's use it as much as we can
-from heaven import Context, Request, Response
+application = Application()
 
-
-def protect(func):
-    @wraps(func)
-    async def delegate(req: Request, res: Response, ctx: Context):
-        token = req.headers.get('authorization')
-
-        # use your preferred jwt or other validation lib/scheme here
-        if not token:
-            res.status = HTTPStatus.UNAUTHORIZED
-            res.body = 'Whatever body you want'
-            return
-
-        ctx.keep('user', {...})
-        if iscoroutinefunction(handler): await func(req, res, ctx)
-        else: func(req, res, ctx)
-    return delegate
+# application.TEMPLATES('my/templates/folder', asynchronous=False)
+application.TEMPLATES('my/templates/folder')  # asynchronous=True
 
 
-# use decorator to protect handler(s) of choice
-@protect
-async def get_customer_info(req: Request, res: Response, ctx: Context):
-    res.body = {}
+async def index(req, res, ctx):
+    ctx.keep('message', 'Hello world!')
+    await res.render('index.html', req=req, my_name='Santa')
+
+
+application.GET('/', index)
 ```
 
-
-## Data Validation Example
-
-```py
-from heaven import ...  # necessary imports here
-from pydantic import BaseModel
-
-
-class Guest(BaseModel):
-    email: EmailStr
-    password: str
-
-
-def expects(model: BaseModel):
-    async def delegate(req: Request, res: Response, ctx: Context):
-        try:
-            data = loads(req.body)
-            guest = Guest(**data)
-        except:  # be more specific with exceptions in production code
-            res.status = HTTPStatus.BAD_REQUEST
-            return
-        ctx.keep('guest', Guest)
-    return delegate
-
-
-@expects(Guest)
-async def do_login_with_email(req: Request, res: Response, ctx: Context):
-    guest: Guest = ctx.guest
-    print(guest.email)
-    print(guest.password)
+<hr />
+In your `index.html` file `Note:` heaven will inject `ctx` automatically:
+```html
+<h1>{{ ctx.message }}</h1><!-- injected by heaven automatically -->
+<p>{{ my_name }}</p><!-- you injected this manually -->
 ```
+
+You can also pass additional arguments `response.render('', *args)` the rendered template as is.
+
+For more see [tutorial - how to use Jinja](https://jinja.palletsprojects.com/en/3.1.x/).
+
+

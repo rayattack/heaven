@@ -58,13 +58,13 @@ minutes. Complete mastery with no grey spots.
 
 - Minute 1: [Quickstart](quickstart.md) : Toe in the water
 
-- Minute 2: [Heaven Application](router.md)
+- Minute 2: [Request to Heaven](request.md)
 
-- Minute 3: [Request to Heaven](request.md)
+- Minute 3: [Response from Heaven](response.md)
 
-- Minute 4: [Responses from Heaven](response.md)
+- Minute 4: [Context of Heaven](context.md)
 
-- Minute 5: [Context of Heaven](context.md)
+- Minute 5: [Heaven Application](router.md)
 
 - Minute 6: [Rendering HTML Templates &amp; Public Assets](html.md)
 
