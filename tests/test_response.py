@@ -5,6 +5,7 @@ from unittest import TestCase
 
 from heaven import Response, Router, Context
 from heaven.constants import MESSAGE_NOT_FOUND
+from heaven.response import _get_guardian_angel
 
 
 router = Router()
@@ -36,3 +37,31 @@ def test_response_body():
     _body = response._body
     assert(_body != message_not_found)
     assert(isinstance(_body, bytes))
+
+
+def test_response_headers():
+    assert response.header('key', 'value') is not None
+
+
+def test_response_body_encodings():
+    response = Response(app=router, context=context)
+
+    response.body = 'hello world'
+    assert response.body == b'hello world'
+
+    response.body = 4
+    assert response.body == b'4'
+
+def test_get_guardian_angel_html():
+    res = Response(app=router, context=context)
+    _get_guardian_angel(res, 'some error', 'some snippet')
+    assert res.headers == [(b'Content-Type', b'text/html')]
+    assert res.status == status.INTERNAL_SERVER_ERROR
+    assert isinstance(res.body, bytes)
+
+
+def test_response_redirect():
+    res = Response(app=router, context=context)
+    assert res.redirect('/some/path') is not None
+    assert res.status == status.TEMPORARY_REDIRECT
+    assert res.headers == [(b'Location', b'/some/path')]

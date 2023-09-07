@@ -21,7 +21,7 @@ SYNC_RENDER = '''
 '''
 
 
-def get_guardian_angel_html(error: str, snippet: str):
+def get_guardian_angel_html(error: str, snippet: str):  # pragma: no cover
     return f'''
     <html>
         <head>

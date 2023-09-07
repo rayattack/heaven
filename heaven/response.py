@@ -9,7 +9,7 @@ from .constants import MESSAGE_NOT_FOUND, STATUS_NOT_FOUND
 from .context import Context
 from .tutorials import get_guardian_angel_html, ASYNC_RENDER, NO_TEMPLATING, SYNC_RENDER
 if TYPE_CHECKING:
-    from router import App
+    from router import App  # pragma: no cover
 
 
 # For compatibility with older versions of python3 using this
@@ -36,7 +36,7 @@ def _(payload: str):
 def _(payload):
     return f'{payload}'.encode()
 
-def _get_guardian_angel(res: 'Response', error, snippet: str):
+def _get_guardian_angel(res: 'Response', error: str, snippet: str):
     res.headers = 'Content-Type', 'text/html'
     res.status = HTTPStatus.INTERNAL_SERVER_ERROR
     res.body = get_guardian_angel_html(error, snippet)
@@ -79,23 +79,27 @@ class Response():
     def body(self, value):
         self._body = _body(value)
 
-    def defer(self, func):
+    def defer(self, func) -> 'Response':
         self._deferred.append(func)
 
     @property
     def deferred(self):
         return len(self._deferred) > 0
+    
+    def header(self, key, val) -> 'Response':
+        _encode = lambda k: k.encode('utf-8') if isinstance(k, str) else k
+        value = _encode(key), _encode(val)
+        self._headers.append(value)
+        return self
 
     @property
     def headers(self):
         return self._headers
 
     @headers.setter
-    def headers(self, value):
+    def headers(self, value) -> 'Response':
         key, val = value
-        _encode = lambda k: k.encode('utf-8') if isinstance(k, str) else k
-        value = _encode(key), _encode(val)
-        self._headers.append(value)
+        return self.header(key, val)
 
     @property
     def metadata(self):
@@ -106,7 +110,7 @@ class Response():
         if not isinstance(value, dict): raise ValueError
         self._metadata = value
 
-    async def render(self, name: str, **contexts):
+    async def render(self, name: str, **contexts) -> 'Response':
         """Serve html file walking up parent router/app tree until base parent if necessary"""
         templater = self._app._templater
         self.headers = 'content-type', 'text/html'
@@ -120,8 +124,9 @@ class Response():
 
         template = templater.get_template(name)
         self.body = await template.render_async({'ctx': self._ctx, **contexts})
+        return self
 
-    def renders(self, name: str, **contexts):
+    def renders(self, name: str, **contexts) -> 'Response':
         """Synchronous version of render method above"""
         templater = self._app._templater
         self.headers = 'content-type', 'text/html'
@@ -134,22 +139,25 @@ class Response():
             return _get_guardian_angel(self, 'Trying to use Async HTML Renderer to render Sync HTML', SYNC_RENDER)
         template = templater.get_template(name)
         self.body = template.render({'ctx': self._ctx, **contexts})
+        return self
 
-    def redirect(self, location, permanent=False):
+    def redirect(self, location, permanent=False) -> 'Response':
         if permanent: self.status = HTTPStatus.PERMANENT_REDIRECT
         else: self.status = HTTPStatus.TEMPORARY_REDIRECT
         self.headers = 'Location', location
+        return self
 
     @property
-    def status(self):
+    def status(self): # pragma: no cover
         return self._status
 
     @status.setter
-    def status(self, value: int):
+    def status(self, value: int) -> 'Response':
         self._status = value
+        return self
 
     @property
-    def template(self):
+    def template(self):  # pragma: no cover
         return self._template
 
     @template.setter

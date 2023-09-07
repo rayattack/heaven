@@ -83,6 +83,20 @@ class AsyncRouterTest(IsolatedAsyncioTestCase):
         _, text_html = response.headers[0]
         self.assertEqual(text_html, b'text/html')
 
+    async def test_templates_async(self):
+        metadata = DEFAULT, None
+        receiver = _get_mock_receiver()
+        router = Application()
+        engine = router.subdomains.get(DEFAULT)
+        async def async_receiver(req, res, ctx):
+            await res.render('index.html')
+        router.TEMPLATES('docs', asynchronous=True)
+        router.GET('/v2/customers', async_receiver)
+        response = await engine.handle({**MOCK_SCOPE, 'path': '/v2/customers'}, receiver, None, metadata, router)
+        self.assertIsInstance(response, Response)
+        self.assertEqual(len(response.headers), 1)
+        self.assertTrue('Go big or go home...' in response.body.decode())
+
     @patch('heaven.router._notify')
     async def test_call(self, _notify):
         mock = Mock()
