@@ -115,11 +115,10 @@ class Response():
         """Serve html file walking up parent router/app tree until base parent if necessary"""
         templater = self._app._templater
         self.headers = 'content-type', 'text/html'
-        if self._mounted_from_application:
-            templater = self._mounted_from_application._templater or templater
+        # if self._mounted_from_application: templater = self._mounted_from_application._templater or templater
         if not templater:
             return _get_guardian_angel(self, 'You did not enable templating', NO_TEMPLATING)
-        
+
         if not templater.is_async:
             return _get_guardian_angel(self, 'Trying to use Sync HTML Renderer to render HTML Async', ASYNC_RENDER)
 
@@ -131,8 +130,6 @@ class Response():
         """Synchronous version of render method above"""
         templater = self._app._templater
         self.headers = 'content-type', 'text/html'
-        if self._mounted_from_application:
-            templater = self._mounted_from_application._templater or templater
         if not templater:
             return _get_guardian_angel(self, 'You did not enable templating', NO_TEMPLATING)
         

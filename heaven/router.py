@@ -346,6 +346,7 @@ class Router(object):
         self._buckets = {}
         self._configuration = _get_configuration(configurator)
         self._templater = None
+        self._loader = None
 
     async def __call__(self, scope, receive, send):
         if scope['type'] == 'lifespan':
@@ -477,6 +478,7 @@ class Router(object):
         environment = Environment(loader=file_system_loader, autoescape=select_autoescape(files_to_escape))
         environment.is_async = asynchronous
         self._templater = environment
+        self._loader = file_system_loader
 
     def ASSETS(self, folder: str, route='/public/*', subdomain=DEFAULT, relative_to=None):
         # TODO: add warning if root folder slash is used
@@ -539,6 +541,8 @@ class Router(object):
         if not isolated:
             self._buckets = {**router._buckets, **self._buckets}
             self._configuration = {**router._configuration, **self._configuration}
+            if self._loader and router._loader:
+                self._loader.searchpath = [*router._loader.searchpath, *self._loader.searchpath]
 
         self.deinitializers.extend(router.deinitializers)
         self.initializers.extend(router.initializers)
