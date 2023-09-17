@@ -2,13 +2,14 @@ from asyncio import gather
 from collections import deque
 from functools import wraps
 from http import HTTPStatus
+from importlib import import_module
 from inspect import iscoroutinefunction
 from os import path, getcwd
 
 from aiofiles import open as async_open_file
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-from typing import Callable
+from typing import Callable, Union
 
 from .constants import (
     CONNECT,
@@ -46,7 +47,7 @@ from .context import Context
 methods = ['get', 'post', 'put', 'delete', 'connect', 'head', 'options', 'patch']
 
 
-Handler = Callable[[Request, Response], object]
+Handler = Union[Callable[[Request, Response, Context], object], str]
 
 SEPARATOR = INDEX = "/"
 
@@ -376,54 +377,60 @@ class Router(object):
 
     def abettor(self, method: str, route: str, handler: Handler, subdomain=DEFAULT, router = None):
         if not route.startswith('/'): raise UrlError
+        if isinstance(handler, str):
+            # import the function using the str
+            module_name, function_name = handler.rsplit('.', 1)
+            module = import_module(module_name)
+            handler = getattr(module, function_name)
+
         engine = self.subdomains.get(subdomain)
         if not isinstance(engine, Routes):
             raise SubdomainError
         engine.add(method, route, handler, router or self)
 
-    def AFTER(self, route: str, handler: Callable, subdomain=DEFAULT):
+    def AFTER(self, route: str, handler: Handler, subdomain=DEFAULT):
         if not route.startswith('/'): raise UrlError(URL_ERROR_MESSAGE)
         engine = self.subdomains.get(subdomain)
         if not isinstance(engine, Routes): #pragma: nocover
             raise NameError('Subdomain does not exist - register subdomain on router first')
         engine.after = route, handler
 
-    def BEFORE(self, route: str, handler: Callable, subdomain=DEFAULT):
+    def BEFORE(self, route: str, handler: Handler, subdomain=DEFAULT):
         if not route.startswith('/'): raise UrlError(URL_ERROR_MESSAGE)
         engine = self.subdomains.get(subdomain)
         if not isinstance(engine, Routes): #pragma: nocover
             raise NameError('Subdomain does not exist - register subdomain on router first')
         engine.before = route, handler
 
-    def CONNECT(self, route: str, handler: Callable[[Request, Response], object], subdomain=DEFAULT):
+    def CONNECT(self, route: str, handler: Handler, subdomain=DEFAULT):
         self.abettor(METHOD_CONNECT, route, handler, subdomain)
 
     def CONFIG(self, config):
         return self._configuration[config]
 
-    def DELETE(self, route: str, handler: Callable, subdomain=DEFAULT):
+    def DELETE(self, route: str, handler: Handler, subdomain=DEFAULT):
         self.abettor(METHOD_DELETE, route, handler, subdomain)
     
-    def GET(self, route: str, handler: Callable, subdomain=DEFAULT):
+    def GET(self, route: str, handler: Handler, subdomain=DEFAULT):
         self.abettor(METHOD_GET, route, handler, subdomain)
     
-    def HTTP(self, route: str, handler: Callable, subdomain=DEFAULT):
+    def HTTP(self, route: str, handler: Handler, subdomain=DEFAULT):
         for method in [CONNECT, DELETE, GET, OPTIONS, PATCH, POST, PUT, TRACE]:
             self.abettor(method, route, handler, subdomain)
     
-    def OPTIONS(self, route: str, handler: Callable, subdomain=DEFAULT):
+    def OPTIONS(self, route: str, handler: Handler, subdomain=DEFAULT):
         self.abettor(METHOD_OPTIONS, route, handler, subdomain)
     
-    def PATCH(self, route: str, handler: Callable, subdomain=DEFAULT):
+    def PATCH(self, route: str, handler: Handler, subdomain=DEFAULT):
         self.abettor(METHOD_PATCH, route, handler, subdomain)
     
-    def POST(self, route: str, handler: Callable, subdomain=DEFAULT):
+    def POST(self, route: str, handler: Handler, subdomain=DEFAULT):
         self.abettor(METHOD_POST, route, handler, subdomain)
     
-    def PUT(self, route: str, handler: Callable, subdomain=DEFAULT):
+    def PUT(self, route: str, handler: Handler, subdomain=DEFAULT):
         self.abettor(METHOD_PUT, route, handler, subdomain)
     
-    def TRACE(self, route: str, handler: Callable, subdomain=DEFAULT):
+    def TRACE(self, route: str, handler: Handler, subdomain=DEFAULT):
         self.abettor(METHOD_TRACE, route, handler, subdomain)
 
     def ON(self, *args):
