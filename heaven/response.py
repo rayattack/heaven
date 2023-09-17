@@ -81,6 +81,7 @@ class Response():
 
     def defer(self, func) -> 'Response':
         self._deferred.append(func)
+        return self
 
     @property
     def deferred(self):
@@ -114,8 +115,8 @@ class Response():
         """Serve html file walking up parent router/app tree until base parent if necessary"""
         templater = self._app._templater
         self.headers = 'content-type', 'text/html'
-        if self._mounted_from_application and not templater:
-            templater = self.mounted._templater
+        if self._mounted_from_application:
+            templater = self._mounted_from_application._templater or templater
         if not templater:
             return _get_guardian_angel(self, 'You did not enable templating', NO_TEMPLATING)
         
@@ -130,8 +131,8 @@ class Response():
         """Synchronous version of render method above"""
         templater = self._app._templater
         self.headers = 'content-type', 'text/html'
-        if self._mounted_from_application and not templater:
-            templater = self.mounted._templater
+        if self._mounted_from_application:
+            templater = self._mounted_from_application._templater or templater
         if not templater:
             return _get_guardian_angel(self, 'You did not enable templating', NO_TEMPLATING)
         
