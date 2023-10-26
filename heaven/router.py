@@ -85,6 +85,14 @@ def _set_content_type(req: Request, res: Response):
     elif(req.url.endswith('.js')): res.headers = ct, 'text/javascript'
 
 
+def _string_to_function_handler(handler: str):
+    if isinstance(handler, str):
+        module_name, function_name = handler.rsplit('.', 1)
+        module = import_module(module_name)
+        handler = getattr(module, function_name)
+    return handler
+
+
 class Route(object):
     def __init__(self, route: str, handler: Callable, router: 'Router') -> None:
         self.heaven_instance = router
@@ -378,12 +386,7 @@ class Router(object):
 
     def abettor(self, method: str, route: str, handler: Handler, subdomain=DEFAULT, router = None):
         if not route.startswith('/'): raise UrlError
-        if isinstance(handler, str):
-            # import the function using the str
-            module_name, function_name = handler.rsplit('.', 1)
-            module = import_module(module_name)
-            handler = getattr(module, function_name)
-
+        handler = _string_to_function_handler(handler)
         engine = self.subdomains.get(subdomain)
         if not isinstance(engine, Routes):
             raise SubdomainError
@@ -394,6 +397,7 @@ class Router(object):
         engine = self.subdomains.get(subdomain)
         if not isinstance(engine, Routes): #pragma: nocover
             raise NameError('Subdomain does not exist - register subdomain on router first')
+        handler = _string_to_function_handler(handler)
         engine.after = route, handler
 
     def BEFORE(self, route: str, handler: Handler, subdomain=DEFAULT):
@@ -401,6 +405,7 @@ class Router(object):
         engine = self.subdomains.get(subdomain)
         if not isinstance(engine, Routes): #pragma: nocover
             raise NameError('Subdomain does not exist - register subdomain on router first')
+        handler = _string_to_function_handler(handler)
         engine.before = route, handler
 
     def CONNECT(self, route: str, handler: Handler, subdomain=DEFAULT):

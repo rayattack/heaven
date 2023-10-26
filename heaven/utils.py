@@ -28,3 +28,14 @@ def preprocessor(scope):
     parts = host.split('.', 2)
     has_subdomain = len(parts) > 2
     return (parts[0], headers,) if has_subdomain else (DEFAULT, headers,)
+
+
+class Lookup(object):
+    def __init__(self, data: dict):
+        self._data = data
+    
+    def __getattr__(self, key: str):
+        value = self._data.get(key)
+        if isinstance(value, dict):
+            return Lookup(value)
+        return value
