@@ -5,7 +5,7 @@ site_description: Python to SQL engine
 site_author: Raymond Ortserga
 
 repo_name: rayattack/heaven
-repo_url: https://www.github.com/lazineer/heaven
+repo_url: https://www.github.com/rayattack/heaven
 
 theme:
   name: 'material'
