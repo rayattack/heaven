@@ -81,7 +81,7 @@ class AsyncRouterTest(IsolatedAsyncioTestCase):
         self.assertEqual(len(response.headers), 1)
         self.assertTrue('Go big or go home...' in response.body.decode())
         _, text_html = response.headers[0]
-        self.assertEqual(text_html, b'text/html')
+        self.assertEqual(text_html, b'text/html; charset=utf-8')
 
     async def test_templates_async(self):
         metadata = DEFAULT, None

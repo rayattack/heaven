@@ -1,3 +1,7 @@
+#### VERSION 0.2.6
+- Add support for `Response.out` helper function to allow setting status, body, and headers from a single function body
+
+
 #### VERSION 0.1.0
 ------------------
 

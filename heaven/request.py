@@ -13,6 +13,7 @@ class Request:
         self._body = body
         self._cookies = None
         self._form = None
+        self._route = None
         self._receive = receive
         self._scope = scope
         self._subdomain, self._headers = metadata
@@ -82,6 +83,10 @@ class Request:
             for header in self._scope.get("headers"):
                 self._headers[header[0]] = header[1]
         return self._headers
+
+    @property
+    def route(self):
+        return self._route
 
     @property
     def server(self) -> str:

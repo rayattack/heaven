@@ -277,6 +277,7 @@ class Routes(object):
             return w
 
         r._application = route_node.heaven_instance
+        r._route = matched
 
         # call all pre handle request hooks but first reset response_writer from not found to found
         w.status = 200; w.body = b''
@@ -467,8 +468,10 @@ class Router(object):
             try: assert first.lower() in [STARTUP, SHUTDOWN]
             except (AssertionError, TypeError, AttributeError): raise ValueError(help_message)
 
-            try: assert isinstance(second, Callable)
-            except AssertionError: raise TypeError(error_message)
+            try:
+                if isinstance(second, str): second = _string_to_function_handler(second)
+                assert isinstance(second, Callable)
+            except (ValueError, AssertionError): raise TypeError(error_message)
 
             if first.lower() == STARTUP: self.initializers.append(closure(second))
             else: self.deinitializers.append(closure(second))

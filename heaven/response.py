@@ -114,7 +114,7 @@ class Response():
     async def render(self, name: str, **contexts) -> 'Response':
         """Serve html file walking up parent router/app tree until base parent if necessary"""
         templater = self._app._templater
-        self.headers = 'content-type', 'text/html'
+        self.headers = 'content-type', 'text/html; charset=utf-8'
         # if self._mounted_from_application: templater = self._mounted_from_application._templater or templater
         if not templater:
             return _get_guardian_angel(self, 'You did not enable templating', NO_TEMPLATING)
@@ -129,7 +129,7 @@ class Response():
     def renders(self, name: str, **contexts) -> 'Response':
         """Synchronous version of render method above"""
         templater = self._app._templater
-        self.headers = 'content-type', 'text/html'
+        self.headers = 'content-type', 'text/html; charset=utf-8'
         if not templater:
             return _get_guardian_angel(self, 'You did not enable templating', NO_TEMPLATING)
         
@@ -161,3 +161,9 @@ class Response():
     @template.setter
     def template(self, path):
         self._template
+
+    def out(self, status: int, body, headers=None) -> 'Response':
+        self.status = status
+        self.body = body
+        if headers: self.headers = headers
+        return self
