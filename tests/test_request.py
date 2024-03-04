@@ -75,9 +75,9 @@ class TestRequest(TestCase):
         self.assertDictEqual(self.request.params, {})
 
     def test_query_strings_parsed_correctly(self):
-        params = self.request.params
-        self.assertEqual(params.get("page"), "2")
-        self.assertIsInstance(params.get("pagination"), list)
+        queries = self.request.queries
+        self.assertEqual(queries.get("page"), "2")
+        self.assertIsInstance(queries.get("pagination"), list)
 
     def test_querystring_helper(self):
         self.assertIsNotNone(self.request.querystring)

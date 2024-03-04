@@ -26,6 +26,7 @@ from .constants import (
     METHOD_POST,
     METHOD_PUT,
     METHOD_TRACE,
+    METHOD_WEBSOCKET,
     OPTIONS,
     PATCH,
     POST,
@@ -347,6 +348,7 @@ class Routes(object):
 
 class Router(object):
     def __init__(self, configurator=None):
+        self.__ws = None
         self.finalized = False
         self.initializers = deque()
         self.deinitializers = deque()
@@ -378,8 +380,11 @@ class Router(object):
             engine = wildcard_engine if wildcard_engine else self.subdomains.get(DEFAULT)
 
         response = await engine.handle(scope, receive, send, metadata, self)
-        await send({'type': 'http.response.start', 'headers': response.headers, 'status': response.status})
-        await send({'type': 'http.response.body', 'body': response.body, **response.metadata})
+        if scope['type'] == 'http':
+            await send({'type': 'http.response.start', 'headers': response.headers, 'status': response.status})
+            await send({'type': 'http.response.body', 'body': response.body, **response.metadata})
+        else:
+            await send({'type': 'websocket.start', 'headers': response.headers, 'status': response.status})
 
         # add background tasks
         if response.deferred:
@@ -506,6 +511,13 @@ class Router(object):
                 res.status = HTTPStatus.NOT_FOUND
         self.GET(route, serve_assets, subdomain)
 
+    def SOCKET(self, route: str, handler: Handler, subdomain=DEFAULT):
+        self.WS(route, handler, subdomain)
+    def WEBSOCKET(self, route: str, handler: Handler, subdomain=DEFAULT):
+        self.WS(route, handler, subdomain)
+    def WS(self, route: str, handler: Handler, subdomain=DEFAULT):
+        self.abettor(METHOD_WEBSOCKET, route, handler, subdomain)
+
     async def _register(self):
         i = len(self.initializers)
         while self.initializers:
@@ -568,6 +580,15 @@ class Router(object):
                 self.subdomains[subdomain].afters[after] = [*engine.afters[after], *self.subdomains[subdomain].afters.get(after, [])]
             for before in engine.befores:
                 self.subdomains[subdomain].befores[before] = [*engine.befores[before], *self.subdomains[subdomain].befores.get(before, [])]
+
+    def websocket(self):
+        # only if app is already running
+        if(self.__ws): return
+        self.__ws = True
+
+    @property
+    def ws(self):
+        return self.__ws
 
 
 class Application(Router):...

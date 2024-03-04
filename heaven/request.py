@@ -18,7 +18,9 @@ class Request:
         self._scope = scope
         self._subdomain, self._headers = metadata
         self._params = None
+        self._queries = None
         self._dirty = False
+        self._queried = False
         self._mounted_from_application = None
 
     def _parse_qs(self):
@@ -109,7 +111,7 @@ class Request:
     def params(self):
         if not self._dirty:
             if not self._params: self._params = {}
-            self._params = {**self._params, **self._parse_qs()}
+            self._params = {**self._params}
             self._dirty = True
         return self._params or {}
 
@@ -118,6 +120,20 @@ class Request:
         if not self._params:
             self._params = {}
         self._params[pair[0]] = pair[1]
+    
+    @property
+    def queries(self):
+        if not self._queried:
+            if not self._queries: self._queries = {}
+            self._queries = {**self._parse_qs()}
+            self._queried = True
+        return self._queries or {}
+
+    @queries.setter
+    def queries(self, pair):
+        if not self._queries:
+            self._queries = {}
+        self._queries[pair[0]] = pair[1]
 
     @property
     def querystring(self):
