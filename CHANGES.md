@@ -1,4 +1,14 @@
+### VERSION 0.3.2
+- Make Heaven Errors more informative and helpful for debugging i.e. UrlDuplicateError should say what URL is the offending URL
+
+#### VERSION 0.3.1
+
+- Add support for adding daemons that run for the entire lifecycle of the application via
+	the `Application.daemons` getter and setter fields.
+
+
 #### VERSION 0.2.6
+
 - Add support for `Response.out` helper function to allow setting status, body, and headers from a single function body
 
 

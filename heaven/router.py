@@ -1,4 +1,4 @@
-from asyncio import gather
+from asyncio import gather, get_running_loop, sleep as asleep
 from collections import deque
 from functools import wraps
 from http import HTTPStatus
@@ -141,13 +141,13 @@ class Route(object):
 
                 return matched, self.not_found
             node = current_node
-                
+
         # was there a wildcard encountered along the way
         if deviation_point and not node.route:
             r.params = '*', route_at_deviation
             return deviation_point.route, deviation_point.handler
         return node.route, node.handler
-    
+
     def not_found(self, r: Request, w: Response, c: Context):
         w.status = 404
         w.body = b'Not found'
@@ -169,7 +169,7 @@ class Routes(object):
         """
         # ensure the method and route combo has not been already registered
         try: assert self.cache.get(method, {}).get(route) is None
-        except AssertionError: raise UrlDuplicateError
+        except AssertionError: raise UrlDuplicateError(f'URL: {route} already registered for METHOD: {method}')
 
         self.cache[method][route] = handler
 
@@ -198,7 +198,7 @@ class Routes(object):
             if not new_route_node:
                 new_route_node = Route(None, None, router)
                 route_node.children[_heaven] = new_route_node
-            
+
             route_node = new_route_node
             route_node.parameterized = _parameterized
 
@@ -206,7 +206,7 @@ class Routes(object):
                 assert route_node.handler is None, f'Handler already registered for route: ${_heaven}'
                 route_node.route = route
                 route_node.handler = handler
-    
+
     @property
     def after(self):
         raise KeyError('Not readable')
@@ -219,7 +219,7 @@ class Routes(object):
             routes.append(handler)
         else:
             self.afters[route] = [handler]
-    
+
     @property
     def before(self):
         raise KeyError('Not readable')
@@ -232,7 +232,7 @@ class Routes(object):
             routes.append(handler)
         else:
             self.befores[route] = [handler]
-    
+
     def get_handler(self, routes):
         for route in routes:...
         return None, None
@@ -302,7 +302,7 @@ class Routes(object):
         # i.e. hook lookup is constant but running many hooks will
         # increase the time it takes before the response is released to the network
         return w
-    
+
     def remove(self, method: str, route: str):
         assert method in METHODS
         route_node = self.routes.get(method)
@@ -358,6 +358,7 @@ class Router(object):
         self._configuration = _get_configuration(configurator)
         self._templater = None
         self._loader = None
+        self.__daemons = []
 
     async def __call__(self, scope, receive, send):
         if scope['type'] == 'lifespan':
@@ -367,6 +368,7 @@ class Router(object):
                     try: await self._register()
                     except: _notify()
                     await send({'type': 'lifespan.startup.complete'})
+                    await self.__rundaemons()
                 elif message['type'] == 'lifespan.shutdown':
                     try: await self._unregister()
                     except: _notify(event=SHUTDOWN)
@@ -390,13 +392,107 @@ class Router(object):
         if response.deferred:
             await gather(*[func(self) for func in response._deferred])
 
+    async def __rundaemons(self):
+        loop = get_running_loop()
+        for daemon in self.__daemons:
+            print(f'(X):  starting daemon: ', daemon.__name__)
+            loop.create_task(daemon(self))
+
+    async def _register(self):
+        i = len(self.initializers)
+        while self.initializers:
+            initializer, c = self.initializers.popleft(), len(self.initializers)
+            index = i - c
+            print(f'({index}): ', initializer.__name__, '\n')
+            if iscoroutinefunction(initializer): await initializer(self)
+            else: initializer(self)
+
+    async def _unregister(self):
+        i = len(self.deinitializers)
+        while self.deinitializers:
+            deinitializer, c = self.deinitializers.popleft(), len(self.deinitializers)
+            index = i - c
+            print(f'({index}): ', deinitializer.__name__, '\n')
+            if iscoroutinefunction(deinitializer): await deinitializer(self)
+            else: deinitializer(self)
+
     def abettor(self, method: str, route: str, handler: Handler, subdomain=DEFAULT, router = None):
-        if not route.startswith('/'): raise UrlError
+        if not route.startswith('/'): raise UrlError(f'{route} is not a valid route - must start with /')
         handler = _string_to_function_handler(handler)
         engine = self.subdomains.get(subdomain)
         if not isinstance(engine, Routes):
             raise SubdomainError
         engine.add(method, route, handler, router or self)
+
+    @property
+    def daemons(self):
+        return self.__daemons
+
+    @daemons.setter
+    def daemons(self, afunction):
+        @wraps(afunction)
+        async def _daemon(app):
+            if (iscoroutinefunction(afunction)): sleeps = await afunction(app)
+            else: sleeps = afunction(app)
+            if sleeps is None or sleeps == False: return
+            await asleep(sleeps)
+            loop = get_running_loop()
+            loop.create_task(_daemon(app))
+        self.__daemons.append(_daemon)
+
+    def keep(self, key, value):
+        self._buckets[key] = value
+
+    def unkeep(self, key):
+        value = self._buckets[key]
+        del self._buckets[key]
+        return value
+
+    def peek(self, key):
+        try: value = self._buckets[key]
+        except KeyError: return None
+        else: return value
+
+    def listen(self, host='localhost', port='8701', debug=DEFAULT): #pragma: nocover
+        # repurpose this for websockets?
+        pass
+
+    def subdomain(self, subdomain: str):
+        if self.subdomains.get(subdomain): return
+        self.subdomains[subdomain] = Routes()
+
+    def mount(self, router: 'Router', isolated = True):
+        if not isolated:
+            self._buckets = {**router._buckets, **self._buckets}
+            self._configuration = {**router._configuration, **self._configuration}
+            if self._loader and router._loader:
+                self._loader.searchpath = [*router._loader.searchpath, *self._loader.searchpath]
+
+        self.deinitializers.extend(router.deinitializers)
+        self.initializers.extend(router.initializers)
+
+        for subdomain in router.subdomains:
+            engine: Routes = router.subdomains[subdomain]
+            for method in engine.cache:
+                cache = engine.cache[method]
+                for route in cache:
+                    handler = cache[route]
+                    self.subdomain(subdomain)
+                    closured_handler = _closure_mounted_application(handler, router)
+                    self.abettor(method, route, closured_handler, subdomain=subdomain, router=router if isolated else self)
+            for after in engine.afters:
+                self.subdomains[subdomain].afters[after] = [*engine.afters[after], *self.subdomains[subdomain].afters.get(after, [])]
+            for before in engine.befores:
+                self.subdomains[subdomain].befores[before] = [*engine.befores[before], *self.subdomains[subdomain].befores.get(before, [])]
+
+    def websocket(self):
+        # only if app is already running
+        if(self.__ws): return
+        self.__ws = True
+
+    @property
+    def ws(self):
+        return self.__ws
 
     def AFTER(self, route: str, handler: Handler, subdomain=DEFAULT):
         if not route.startswith('/'): raise UrlError(URL_ERROR_MESSAGE)
@@ -422,26 +518,26 @@ class Router(object):
 
     def DELETE(self, route: str, handler: Handler, subdomain=DEFAULT):
         self.abettor(METHOD_DELETE, route, handler, subdomain)
-    
+
     def GET(self, route: str, handler: Handler, subdomain=DEFAULT):
         self.abettor(METHOD_GET, route, handler, subdomain)
-    
+
     def HTTP(self, route: str, handler: Handler, subdomain=DEFAULT):
         for method in [CONNECT, DELETE, GET, OPTIONS, PATCH, POST, PUT, TRACE]:
             self.abettor(method, route, handler, subdomain)
-    
+
     def OPTIONS(self, route: str, handler: Handler, subdomain=DEFAULT):
         self.abettor(METHOD_OPTIONS, route, handler, subdomain)
-    
+
     def PATCH(self, route: str, handler: Handler, subdomain=DEFAULT):
         self.abettor(METHOD_PATCH, route, handler, subdomain)
-    
+
     def POST(self, route: str, handler: Handler, subdomain=DEFAULT):
         self.abettor(METHOD_POST, route, handler, subdomain)
-    
+
     def PUT(self, route: str, handler: Handler, subdomain=DEFAULT):
         self.abettor(METHOD_PUT, route, handler, subdomain)
-    
+
     def TRACE(self, route: str, handler: Handler, subdomain=DEFAULT):
         self.abettor(METHOD_TRACE, route, handler, subdomain)
 
@@ -513,82 +609,12 @@ class Router(object):
 
     def SOCKET(self, route: str, handler: Handler, subdomain=DEFAULT):
         self.WS(route, handler, subdomain)
+
     def WEBSOCKET(self, route: str, handler: Handler, subdomain=DEFAULT):
         self.WS(route, handler, subdomain)
+
     def WS(self, route: str, handler: Handler, subdomain=DEFAULT):
         self.abettor(METHOD_WEBSOCKET, route, handler, subdomain)
-
-    async def _register(self):
-        i = len(self.initializers)
-        while self.initializers:
-            initializer, c = self.initializers.popleft(), len(self.initializers)
-            index = i - c
-            print(f'({index}): ', initializer.__name__, '\n')
-            if iscoroutinefunction(initializer): await initializer(self)
-            else: initializer(self)
-    
-    async def _unregister(self):
-        i = len(self.deinitializers)
-        while self.deinitializers:
-            deinitializer, c = self.deinitializers.popleft(), len(self.deinitializers)
-            index = i - c
-            print(f'({index}): ', deinitializer.__name__, '\n')
-            if iscoroutinefunction(deinitializer): await deinitializer(self)
-            else: deinitializer(self)
-
-    def keep(self, key, value):
-        self._buckets[key] = value
-
-    def unkeep(self, key):
-        value = self._buckets[key]
-        del self._buckets[key]
-        return value
-
-    def peek(self, key):
-        try: value = self._buckets[key]
-        except KeyError: return None
-        else: return value
-
-    def listen(self, host='localhost', port='8701', debug=DEFAULT): #pragma: nocover
-        # repurpose this for websockets?
-        pass
-
-    def subdomain(self, subdomain: str):
-        if self.subdomains.get(subdomain): return
-        self.subdomains[subdomain] = Routes()
-
-    def mount(self, router: 'Router', isolated = True):
-        if not isolated:
-            self._buckets = {**router._buckets, **self._buckets}
-            self._configuration = {**router._configuration, **self._configuration}
-            if self._loader and router._loader:
-                self._loader.searchpath = [*router._loader.searchpath, *self._loader.searchpath]
-
-        self.deinitializers.extend(router.deinitializers)
-        self.initializers.extend(router.initializers)
-
-        for subdomain in router.subdomains:
-            engine: Routes = router.subdomains[subdomain]
-            for method in engine.cache:
-                cache = engine.cache[method]
-                for route in cache:
-                    handler = cache[route]
-                    self.subdomain(subdomain)
-                    closured_handler = _closure_mounted_application(handler, router)
-                    self.abettor(method, route, closured_handler, subdomain=subdomain, router=router if isolated else self)
-            for after in engine.afters:
-                self.subdomains[subdomain].afters[after] = [*engine.afters[after], *self.subdomains[subdomain].afters.get(after, [])]
-            for before in engine.befores:
-                self.subdomains[subdomain].befores[before] = [*engine.befores[before], *self.subdomains[subdomain].befores.get(before, [])]
-
-    def websocket(self):
-        # only if app is already running
-        if(self.__ws): return
-        self.__ws = True
-
-    @property
-    def ws(self):
-        return self.__ws
 
 
 class Application(Router):...
