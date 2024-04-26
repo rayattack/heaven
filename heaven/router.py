@@ -27,12 +27,13 @@ from .constants import (
     METHOD_POST,
     METHOD_PUT,
     METHOD_TRACE,
-    METHOD_WEBSOCKET,
+    METHOD_SOCKET,
     OPTIONS,
     PATCH,
     POST,
     PUT,
     SHUTDOWN,
+    SOCKET,
     STARTUP,
     TRACE,
     URL_ERROR_MESSAGE,
@@ -159,7 +160,7 @@ class Routes(object):
         self.afters = {}
         self.befores = {}
 
-        self.cache = {CONNECT: {}, DELETE: {}, GET: {}, HEAD: {}, OPTIONS: {}, PATCH: {}, POST: {}, PUT: {}, TRACE: {}}
+        self.cache = {CONNECT: {}, DELETE: {}, GET: {}, HEAD: {}, OPTIONS: {}, PATCH: {}, POST: {}, PUT: {}, TRACE: {}, SOCKET: {}}
         self.routes = {}
 
     def add(self, method: str, route: str, handler: Callable, router: 'Router'):
@@ -242,12 +243,15 @@ class Routes(object):
         """
         Traverse internal route tree and use appropriate method
         """
-        body = b''
-        more = True
-        while more:
+        received = await receive()
+        event = received.get('type')
+        more_body = received.get('more_body')
+        body = received.get('body') or b''
+        while more_body:
             msg = await receive()
+            print('This is the message that was received: ', msg)
             body += msg.get('body', b'')
-            more = msg.get('more_body', False)
+            more_body = msg.get('more_body', False)
 
         r = Request(scope, body, receive, metadata, application)
         c = Context(application)
@@ -610,11 +614,8 @@ class Router(object):
     def SOCKET(self, route: str, handler: Handler, subdomain=DEFAULT):
         self.WS(route, handler, subdomain)
 
-    def WEBSOCKET(self, route: str, handler: Handler, subdomain=DEFAULT):
-        self.WS(route, handler, subdomain)
-
     def WS(self, route: str, handler: Handler, subdomain=DEFAULT):
-        self.abettor(METHOD_WEBSOCKET, route, handler, subdomain)
+        self.abettor(METHOD_SOCKET, route, handler, subdomain)
 
 
 class Application(Router):...
