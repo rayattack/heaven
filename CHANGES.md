@@ -1,5 +1,10 @@
+### VERSION 0.3.3
+- Fixed bug with query strings by battle pressing to ensure edge cases covered
+
 ### VERSION 0.3.2
 - Make Heaven Errors more informative and helpful for debugging i.e. UrlDuplicateError should say what URL is the offending URL
+- Add support to retrieve `.host` and `.scheme` from the request object
+- Implement `Application.listen` allowing the use of `python app.py` to launch the app
 
 #### VERSION 0.3.1
 

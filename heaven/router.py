@@ -8,6 +8,7 @@ from os import path, getcwd
 
 from aiofiles import open as async_open_file
 from jinja2 import Environment, FileSystemLoader, select_autoescape
+from uvicorn import run
 
 from typing import Callable, Union
 
@@ -453,9 +454,8 @@ class Router(object):
         except KeyError: return None
         else: return value
 
-    def listen(self, host='localhost', port='8701', debug=DEFAULT): #pragma: nocover
-        # repurpose this for websockets?
-        pass
+    def listen(self, host='localhost', port='8701', debug=True, **kwargs): #pragma: nocover
+        run(self, host=host, port=port, debug=debug, **kwargs)
 
     def subdomain(self, subdomain: str):
         if self.subdomains.get(subdomain): return

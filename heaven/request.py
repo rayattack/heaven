@@ -33,7 +33,8 @@ class Request:
 
         query_kv_pairs = qs.split("&")
         for kv_pair in query_kv_pairs:
-            key, value = kv_pair.split("=")
+            try: key, value = kv_pair.split("=")
+            except: continue
             current_value = qsd.get(key)
             if not current_value:
                 qsd[key] = value
@@ -87,8 +88,16 @@ class Request:
         return self._headers
 
     @property
+    def host(self):
+        return self.headers.get('host')
+
+    @property
     def route(self):
         return self._route
+
+    @property
+    def scheme(self):
+        return self._scope.get("scheme")
 
     @property
     def server(self) -> str:
@@ -120,7 +129,7 @@ class Request:
         if not self._params:
             self._params = {}
         self._params[pair[0]] = pair[1]
-    
+
     @property
     def queries(self):
         if not self._queried:
