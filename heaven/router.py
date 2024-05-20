@@ -27,13 +27,12 @@ from .constants import (
     METHOD_POST,
     METHOD_PUT,
     METHOD_TRACE,
-    METHOD_SOCKET,
+    METHOD_WEBSOCKET,
     OPTIONS,
     PATCH,
     POST,
     PUT,
     SHUTDOWN,
-    SOCKET,
     STARTUP,
     TRACE,
     URL_ERROR_MESSAGE,
@@ -44,7 +43,7 @@ from .errors import AbortException, SubdomainError, UrlDuplicateError, UrlError
 from .utils import preprocessor
 from .request import Request
 from .response import Response
-from .context import Context
+from .context import Context, Look
 
 
 methods = ['get', 'post', 'put', 'delete', 'connect', 'head', 'options', 'patch']
@@ -160,7 +159,7 @@ class Routes(object):
         self.afters = {}
         self.befores = {}
 
-        self.cache = {CONNECT: {}, DELETE: {}, GET: {}, HEAD: {}, OPTIONS: {}, PATCH: {}, POST: {}, PUT: {}, TRACE: {}, SOCKET: {}}
+        self.cache = {CONNECT: {}, DELETE: {}, GET: {}, HEAD: {}, OPTIONS: {}, PATCH: {}, POST: {}, PUT: {}, TRACE: {}}
         self.routes = {}
 
     def add(self, method: str, route: str, handler: Callable, router: 'Router'):
@@ -243,15 +242,12 @@ class Routes(object):
         """
         Traverse internal route tree and use appropriate method
         """
-        received = await receive()
-        event = received.get('type')
-        more_body = received.get('more_body')
-        body = received.get('body') or b''
-        while more_body:
+        body = b''
+        more = True
+        while more:
             msg = await receive()
-            print('This is the message that was received: ', msg)
             body += msg.get('body', b'')
-            more_body = msg.get('more_body', False)
+            more = msg.get('more_body', False)
 
         r = Request(scope, body, receive, metadata, application)
         c = Context(application)
@@ -365,6 +361,10 @@ class Router(object):
         self._loader = None
         self.__daemons = []
 
+    @property
+    def _(self):
+        return Look(self._buckets)
+
     async def __call__(self, scope, receive, send):
         if scope['type'] == 'lifespan':
             while True:
@@ -428,6 +428,11 @@ class Router(object):
         if not isinstance(engine, Routes):
             raise SubdomainError
         engine.add(method, route, handler, router or self)
+
+    def call(self, handler: str, *args, **kwargs):
+        if isinstance(handler, str): handler = _string_to_function_handler(handler)
+        handler(self, *args, **kwargs)
+        return self
 
     @property
     def daemons(self):
@@ -614,8 +619,11 @@ class Router(object):
     def SOCKET(self, route: str, handler: Handler, subdomain=DEFAULT):
         self.WS(route, handler, subdomain)
 
+    def WEBSOCKET(self, route: str, handler: Handler, subdomain=DEFAULT):
+        self.WS(route, handler, subdomain)
+
     def WS(self, route: str, handler: Handler, subdomain=DEFAULT):
-        self.abettor(METHOD_SOCKET, route, handler, subdomain)
+        self.abettor(METHOD_WEBSOCKET, route, handler, subdomain)
 
 
 class Application(Router):...

@@ -28,7 +28,13 @@ class AsyncRouterTest(IsolatedAsyncioTestCase):
         self.router.GET('/v1/customers', five)
         self.engine = self.router.subdomains.get(DEFAULT)
         return super().setUp()
-    
+
+    def test_(self):
+        router = Application()
+        router._.name = 'naming'
+        self.assertEqual(router._.name, 'naming')
+        self.assertEqual(router._buckets, {'name': 'naming'})
+
     async def test_deferred_forwarded(self):
         receiver = _get_mock_receiver()
         mocked = Mock()
