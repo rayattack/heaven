@@ -1,6 +1,9 @@
+### VERSION 0.3.8
+- Add support for `response.interpolate(name: str, **contexts)` to render and return html templates without saving to res.body.
+
 ### VERSION 0.3.7
-- Add support for `request.cookie(name: str, value: str, **kwargs)` functionality where `kwargs` supports
-	all the valid set-cookie header parameters (no case sensitivity).
+- Add support for `response.cookie(name: str, value: str, **kwargs)` functionality where `kwargs` supports
+		all the valid set-cookie header parameters (no case sensitivity).
 
 ### VERSION 0.3.6
 - Change ASGI websocket response from `websocket.start` to `websocket.http.response.start`
@@ -147,4 +150,3 @@ Released Jun 1, 2023
 Released May 3, 2023
 
 - Initial Release
-

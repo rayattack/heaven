@@ -86,7 +86,7 @@ class Response():
     @property
     def deferred(self):
         return len(self._deferred) > 0
-    
+
     def header(self, key, val) -> 'Response':
         _encode = lambda k: k.encode('utf-8') if isinstance(k, str) else k
         value = _encode(key), _encode(val)
@@ -110,7 +110,7 @@ class Response():
     def metadata(self, value):
         if not isinstance(value, dict): raise ValueError
         self._metadata = value
-    
+
     def cookie(self, name: str, value: str, **kwargs):
         cookie_string = f'{name}={value}'
         for key, val in kwargs.items():
@@ -165,7 +165,7 @@ class Response():
         self.headers = 'content-type', 'text/html; charset=utf-8'
         if not templater:
             return _get_guardian_angel(self, 'You did not enable templating', NO_TEMPLATING)
-        
+
         if templater.is_async:
             return _get_guardian_angel(self, 'Trying to use Async HTML Renderer to render Sync HTML', SYNC_RENDER)
         template = templater.get_template(name)
@@ -200,3 +200,11 @@ class Response():
         self.body = body
         if headers: self.headers = headers
         return self
+
+    async def interpolate(self, name: str, **contexts):
+        """Serve html file walking up parent router/app tree until base parent if necessary"""
+        templater = self._app._templater
+        if not templater: raise AttributeError('Can not interpolate without enabling templating on the heaven application')
+        if not templater.is_async: raise AttributeError('Async rendering not supported by sync renderer')
+        template = templater.get_template(name)
+        return await template.render_async({'ctx': self._ctx, **contexts})
