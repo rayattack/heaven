@@ -1,3 +1,7 @@
+### VERSION 0.3.7
+- Add support for `request.cookie(name: str, value: str, **kwargs)` functionality where `kwargs` supports
+	all the valid set-cookie header parameters (no case sensitivity).
+
 ### VERSION 0.3.6
 - Change ASGI websocket response from `websocket.start` to `websocket.http.response.start`
 
