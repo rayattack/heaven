@@ -391,7 +391,7 @@ class Router(object):
             await send({'type': 'http.response.start', 'headers': response.headers, 'status': response.status})
             await send({'type': 'http.response.body', 'body': response.body, **response.metadata})
         else:
-            await send({'type': 'websocket.start', 'headers': response.headers, 'status': response.status})
+            await send({'type': 'websocket.http.response.start', 'headers': response.headers, 'status': response.status})
 
         # add background tasks
         if response.deferred:

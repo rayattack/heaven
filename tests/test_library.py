@@ -2,4 +2,4 @@ import heaven
 
 
 def test_version():
-    assert heaven.__version___ == '0.3.4'
+    assert heaven.__version___ == '0.3.6'

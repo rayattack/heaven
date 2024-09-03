@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta
+
 from json import dumps
 from http import HTTPStatus as status
 from mock import Mock, MagicMock
@@ -25,6 +27,17 @@ def test_response_status():
     response.status = status.NOT_ACCEPTABLE
     assert(response.status == status.NOT_ACCEPTABLE)
 
+def test_response_cookie_bad():
+    try:
+       response.cookie('authorization', 'Bearer 123', expires='2022-12-12', secure=False, SameSite='strict')
+    except ValueError as e:
+        assert str(e) == 'Expires must be a datetime object, got 2022-12-12'
+
+def test_reasponse_cookie_good():
+    response.cookie('authorization', 'Bearer 123', expires=datetime.now() + timedelta(days=1), secure=False, SameSite='strict')
+    for header in response._headers:
+        if header[0] == b'Set-Cookie':
+            assert header[1].startswith(b'authorization=Bearer 123')
 
 def test_response_body():
     body = dumps({

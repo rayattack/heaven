@@ -1,3 +1,33 @@
+### VERSION 0.3.6
+- Change ASGI websocket response from `websocket.start` to `websocket.http.response.start`
+
+### VERSION 0.3.5
+- Add support for `._.` a.k.a lookup helper paradigm to manage heaven global state i.e. global state getter and setter
+	```py
+	from http import HTTPStatus
+	from heaven import App
+
+	app = App()
+
+	# save 'abc' under your app global state under the `save_me` key
+	app._.save_me = 'abc'
+
+	# retrieve from your global state using the same `._.` paradigm
+	app.GET('/', lambda req, res, ctx: res.out(HTTPStatus.OK, f'This is what you saved: {req.app._.save_me}'))
+	```
+	think of **app**`._.`**this_field** AS **app** -> `lookup` -> **this_field** where `._. == lookup`
+
+### VERSION 0.3.4
+- Add support for `heaven.call` to inject heaven instance into function passed to `.call` which
+	can be used to defer routes registration or any other heaven setup activities to other python modules i.e.
+	```py
+	from heaven import App
+	app = App()
+
+	#  src/routes/messages.py -> #up(app: App): app.GET('/messages', 'src.controllers.messages.tables')
+	app.call('src.routes.messages.up')
+	```
+
 ### VERSION 0.3.3
 - Fixed bug with query strings by battle pressing to ensure edge cases covered
 

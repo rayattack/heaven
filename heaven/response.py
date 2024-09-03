@@ -110,6 +110,37 @@ class Response():
     def metadata(self, value):
         if not isinstance(value, dict): raise ValueError
         self._metadata = value
+    
+    def cookie(self, name: str, value: str, **kwargs):
+        cookie_string = f'{name}={value}'
+        for key, val in kwargs.items():
+            _key = {
+                'expires': 'Expires',
+                'secure': 'Secure',
+                'httponly': 'HttpOnly',
+                'samesite': 'SameSite',
+                'domain': 'Domain',
+                'path': 'Path',
+                'partitioned': 'Partitioned',
+                'max_age': 'Max-Age',
+                'maxage': 'Max-Age',
+            }.get(key.lower(), key)
+            if _key == 'Expires':
+                try: val = val.strftime('%a, %d %b %Y %H:%M:%S GMT')
+                except: raise ValueError(f'Expires must be a datetime object, got {val}')
+            if _key in ['Secure', 'HttpOnly', 'Partitioned']:
+                if val: cookie_string += f'; {_key}'
+                continue
+            if _key == 'Max-Age':
+                try: val = int(val)
+                except: raise ValueError(f'Max-Age must be an integer, got {val}')
+            if _key == 'SameSite':
+                _val = str(val).capitalize()
+                if _val not in ['Strict', 'Lax', 'None']:
+                    raise ValueError(f'SameSite must be one of Strict, Lax, None, got {val}')
+                val = _val
+            cookie_string += f'; {_key}={val}'
+        self.headers = 'Set-Cookie', f'{name}={value}'
 
     async def render(self, name: str, **contexts) -> 'Response':
         """Serve html file walking up parent router/app tree until base parent if necessary"""
