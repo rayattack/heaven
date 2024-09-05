@@ -251,7 +251,7 @@ class Routes(object):
 
         r = Request(scope, body, receive, metadata, application)
         c = Context(application)
-        w = Response(context=c, app=application)
+        w = Response(context=c, app=application, request=r)
 
         method = scope.get('method')
         matched = None
@@ -598,8 +598,9 @@ class Router(object):
         self._templater = environment
         self._loader = file_system_loader
 
-    def ASSETS(self, folder: str, route='/public/*', subdomain=DEFAULT, relative_to=None):
+    def ASSETS(self, folder: str, route=None, subdomain=DEFAULT, relative_to=None):
         # TODO: add warning if root folder slash is used
+        route = route or f'/{folder}/*'
         if relative_to: assets_folder_path = path.realpath(path.dirname(relative_to))
         else: assets_folder_path = path.realpath(getcwd())
 

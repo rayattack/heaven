@@ -94,5 +94,5 @@ class MockRequest(Request):
 
 
 class MockResponse(Response):
-    def __init__(self, app, context):
-        super().__init__(app, context)
+    def __init__(self, app, context, req):
+        super().__init__(app, context, req)

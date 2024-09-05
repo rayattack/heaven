@@ -10,7 +10,7 @@ class TestMocks(TestCase):
         mock_router = Router()  # replace with mock later
         self.http_request = MockRequest('/v1/customers', host='https://api.someone.com')
         self.context = MockContext({'key': 'value'})
-        self.response_writer = MockResponse(mock_router, MockContext(mock_router))
+        self.response_writer = MockResponse(mock_router, MockContext(mock_router), self.http_request)
         return super().setUp()
 
     def test_listify_headers(self):

@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from .constants import MESSAGE_NOT_FOUND, STATUS_NOT_FOUND
 from .context import Context
 from .tutorials import get_guardian_angel_html, ASYNC_RENDER, NO_TEMPLATING, SYNC_RENDER
+from .request import Request
 if TYPE_CHECKING:
     from router import App  # pragma: no cover
 
@@ -43,9 +44,10 @@ def _get_guardian_angel(res: 'Response', error: str, snippet: str):
 
 
 class Response():
-    def __init__(self, app: 'App', context: 'Context'):
+    def __init__(self, app: 'App', context: 'Context', request: Request):
         self._app = app
         self._ctx = context
+        self._req = request
         self._abort = False
         self._body = MESSAGE_NOT_FOUND.encode()
         self._deferred = []
@@ -156,7 +158,7 @@ class Response():
             return _get_guardian_angel(self, 'Trying to use Sync HTML Renderer to render HTML Async', ASYNC_RENDER)
 
         template = templater.get_template(name)
-        self.body = await template.render_async({'ctx': self._ctx, **contexts})
+        self.body = await template.render_async({'ctx': self._ctx, 'res': self, 'req': self._req, **contexts})
         return self
 
     def renders(self, name: str, **contexts) -> 'Response':
@@ -169,7 +171,7 @@ class Response():
         if templater.is_async:
             return _get_guardian_angel(self, 'Trying to use Async HTML Renderer to render Sync HTML', SYNC_RENDER)
         template = templater.get_template(name)
-        self.body = template.render({'ctx': self._ctx, **contexts})
+        self.body = template.render({'ctx': self._ctx, 'res': self, 'req': self._req, **contexts})
         return self
 
     def redirect(self, location, permanent=False) -> 'Response':

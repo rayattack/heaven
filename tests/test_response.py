@@ -8,11 +8,21 @@ from unittest import TestCase
 from heaven import Response, Router, Context
 from heaven.constants import MESSAGE_NOT_FOUND
 from heaven.response import _get_guardian_angel
+from heaven.mocks import MockRequest
 
 
 router = Router()
 context = Context(router)
-response = Response(app=router, context=context)
+request = MockRequest('/v1/customers', host='https://api.someone.com')
+response = Response(app=router, context=context, request=request)
+
+
+def setup():
+    router = Router()
+    context = Context(router)
+    request = MockRequest('/v1/customers', host='https://api.someone.com')
+    response = Response(app=router, context=context, request=request)
+    return router, context, request, response
 
 
 def test_headers_encoding():
@@ -57,7 +67,7 @@ def test_response_headers():
 
 
 def test_response_body_encodings():
-    response = Response(app=router, context=context)
+    response = Response(app=router, context=context, request=request)
 
     response.body = 'hello world'
     assert response.body == b'hello world'
@@ -66,7 +76,7 @@ def test_response_body_encodings():
     assert response.body == b'4'
 
 def test_get_guardian_angel_html():
-    res = Response(app=router, context=context)
+    res = Response(app=router, context=context, request=request)
     _get_guardian_angel(res, 'some error', 'some snippet')
     assert res.headers == [(b'Content-Type', b'text/html')]
     assert res.status == status.INTERNAL_SERVER_ERROR
@@ -74,7 +84,15 @@ def test_get_guardian_angel_html():
 
 
 def test_response_redirect():
-    res = Response(app=router, context=context)
+    res = Response(app=router, context=context, request=request)
     assert res.redirect('/some/path') is not None
     assert res.status == status.TEMPORARY_REDIRECT
     assert res.headers == [(b'Location', b'/some/path')]
+
+
+def test_response_renders():
+    router, context, request, res = setup()
+    router.TEMPLATES('tests/templates', asynchronous=False)
+    assert isinstance(res.renders('test.html'), res.__class__)
+    assert res.body is not None
+    assert res.headers == [(b'content-type', b'text/html; charset=utf-8')]
