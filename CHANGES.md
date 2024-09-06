@@ -1,3 +1,10 @@
+### VERSION 0.3.10
+- Add the **IP Object** via the `req.ip` object property that provides an `ip.address` and `ip.port` expanded getter for the values.
+
+### VERSION 0.3.9
+- Automatically inject `heaven.Request`, `heaven.Response`, and `heaven.Context` objects into jinja2 template scope so it must not be manually added
+- Add support for using mock heaven objects for writing testable code
+
 ### VERSION 0.3.8
 - Add support for `response.interpolate(name: str, **contexts)` to render and return html templates without saving to res.body.
 

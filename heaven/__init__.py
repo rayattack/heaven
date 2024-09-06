@@ -7,4 +7,4 @@ from .response import Response
 from .context import Context
 
 
-__version___ = '0.3.9'
+__version___ = '0.3.10'

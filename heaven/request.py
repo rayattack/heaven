@@ -1,7 +1,7 @@
 from typing import Any, TYPE_CHECKING
 
 from heaven.form import Form
-
+from heaven.utils import Lookup
 
 if TYPE_CHECKING:
     from heaven import Router
@@ -90,6 +90,11 @@ class Request:
     @property
     def host(self):
         return self.headers.get('host')
+    
+    @property
+    def ip(self):
+        address, port = self._scope.get("client")
+        return Lookup({'address': address, 'port': port})
 
     @property
     def route(self):
