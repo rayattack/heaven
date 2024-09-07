@@ -1,3 +1,6 @@
+### VERSION 0.4.0
+- **breaking change:** Cookies are now case sensitive to support case sensitivity support for chrome and firefox i.e. `req.cookies.get('authentication') != req.cookies.get('Authentication')`.
+
 ### VERSION 0.3.10
 - Add the **IP Object** via the `req.ip` object property that provides an `ip.address` and `ip.port` expanded getter for the values.
 

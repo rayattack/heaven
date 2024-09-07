@@ -65,7 +65,7 @@ class Request:
             for cookie in cookies:
                 try: k, v = cookie.split("=", 1)
                 except: pass
-                else: csd[k.lower()] = v
+                else: csd[k] = v
             self._cookies = csd
         return self._cookies
 
