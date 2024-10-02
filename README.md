@@ -5,7 +5,7 @@ Heaven is a very very small, extremely tiny, and insanely fast [ASGI](https://as
 Heaven is a very light layer around ASGI with support for application mounting and is perhaps the simplest and one of the fastest python web frameworks (biased opinion of course).
 
 
-## Installling
+## Installing
 Install with [pip](https://pip.pypa.io/en/stable/getting-started/)
 ```sh
 $ pip install heaven
