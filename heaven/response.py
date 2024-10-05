@@ -144,7 +144,7 @@ class Response():
                     raise ValueError(f'SameSite must be one of Strict, Lax, None, got {val}')
                 val = _val
             cookie_string += f'; {_key}={val}'
-        self.headers = 'Set-Cookie', f'{name}={value}'
+        self.headers = 'Set-Cookie', cookie_string
 
     async def render(self, name: str, **contexts) -> 'Response':
         """Serve html file walking up parent router/app tree until base parent if necessary"""

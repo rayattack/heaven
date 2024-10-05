@@ -1,3 +1,7 @@
+### VERSION 0.4.1
+- **BUG FIX** the **Response.cookie** does not set the additional options due to ommission. Will yank the
+3.10 version summaratively as there are no other breaking changes
+
 ### VERSION 0.4.0
 - **breaking change:** Cookies are now case sensitive to support case sensitivity support for chrome and firefox i.e. `req.cookies.get('authentication') != req.cookies.get('Authentication')`.
 
