@@ -10,6 +10,7 @@ Heaven is a very light layer around ASGI with support for application mounting a
 ```sh
 $ pip install heaven
 ```
+<hr/>
 
 2. create a function to handle your http requests in a file of your choosing i.e. `patients.py` or `controllers/patients/records.py`
 ```py
