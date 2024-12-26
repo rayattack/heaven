@@ -5,6 +5,7 @@ from http import HTTPStatus
 from importlib import import_module
 from inspect import iscoroutinefunction
 from os import path, getcwd
+from typing import Callable, Tuple
 
 from aiofiles import open as async_open_file
 from jinja2 import Environment, FileSystemLoader, select_autoescape
@@ -99,12 +100,13 @@ class Route(object):
     def __init__(self, route: str, handler: Callable, router: 'Router') -> None:
         self.heaven_instance = router
         self.parameterized = False
+        self.queryhint = None
         self.route = route
         self.handler = handler
         self.children = {}
 
-    def match(self, routes: deque, r: Request):
-        matched: str = None
+    def match(self, routes: deque, r: Request) -> Tuple[str, Callable[[Request, Response, Context], None]]:
+        matched: str = ''
         node: Route = self
         route_at_deviation = '/'.join(routes)
         deviation_point: Route = node.children.get('*')
@@ -132,21 +134,27 @@ class Route(object):
                 wildcard = node.children.get('*')
                 if wildcard:  #pragma: nocover
                     r.params = '*', '/'.join([route, *routes])
+                    r.qh = wildcard.queryhint
                     return wildcard.route, wildcard.handler
 
                 if deviation_point:
                     r.params = '*', route_at_deviation
+                    r.qh = deviation_point.queryhint
                     return deviation_point.route, deviation_point.handler
-                """This is one place where the deviation point is used - the remainder of the url supplied is
-                passed into request.params as the value for '*' for optional lookup purposes"""
-
+                
+                # This is one place where the deviation point is used - the remainder of the url supplied is
+                # passed into request.params as the value for '*' for optional lookup purposes
                 return matched, self.not_found
             node = current_node
 
         # was there a wildcard encountered along the way
         if deviation_point and not node.route:
             r.params = '*', route_at_deviation
+            r.qh = deviation_point.queryhint
             return deviation_point.route, deviation_point.handler
+
+        # here as well we have a return path so set qh
+        r.qh = node.queryhint
         return node.route, node.handler
 
     def not_found(self, r: Request, w: Response, c: Context):
@@ -168,6 +176,10 @@ class Routes(object):
         route: the route url/endpoint
         handler: function corresponding to the signature of a heaven handler
         """
+        queryhint = None
+        if len(route.split('?')) > 1:
+            route, queryhint = route.split('?', 1)
+
         # ensure the method and route combo has not been already registered
         try: assert self.cache.get(method, {}).get(route) is None
         except AssertionError: raise UrlDuplicateError(f'URL: {route} already registered for METHOD: {method}')
@@ -178,12 +190,13 @@ class Routes(object):
         # if necessary so we can traverse freely
         route_node: Route = self.routes.get(method)
         if not route_node:
-            route_node = Route(None, None, router)
+            route_node = Route(route = None, handler = None, router = router)
             self.routes[method] = route_node
 
         if route == SEPARATOR:
             route_node.route = route
             route_node.handler = handler
+            route_node.queryhint = queryhint
             return
 
         # Otherwise strip and split the routes into stops or stoppable
@@ -207,6 +220,7 @@ class Routes(object):
                 assert route_node.handler is None, f'Handler already registered for route: ${_heaven}'
                 route_node.route = route
                 route_node.handler = handler
+                route_node.queryhint = queryhint
 
     @property
     def after(self):
@@ -259,13 +273,12 @@ class Routes(object):
 
         # if the cache has nothing under its GET, POST etc it means nothing's been registered and we can leave early
         roots = self.cache.get(method, {})
-        if not roots:
-            return w
+        if not roots: return w
 
         # if no route node then no methods have been registered
         route_node = self.routes.get(method)
-        if not route_node:
-            return w
+        matched_node = route_node
+        if not route_node: return w
 
         route = scope.get('path')
         if route == SEPARATOR: #pragma: nocover
@@ -275,8 +288,7 @@ class Routes(object):
             routes = route.strip(SEPARATOR).split('/')
             matched, handler = route_node.match(deque(routes), r)
 
-        if not matched:
-            return w
+        if not matched: return w
 
         r._application = route_node.heaven_instance
         r._route = matched

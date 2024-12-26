@@ -25,17 +25,21 @@ them in [Minute 2](request.md), [Minute 3](response.md) and [Minute 4](context.m
 
 ##### 2. Connect your handler to the heaven application
 
+Heaven wants your application and development time to be fast so you don't need to import handler functions, just
+tell your `router`, `application` where your handler function lives and heaven will load it for you.
+
+Of course you can still import it explicitly if you are an extreme purist ;-)
+
 ```python
 from heaven import Router
-
-# from your controller file above
-from controllers import get_one_customer
 
 # create the application
 router = Router()
 
-# connect it to a route
-router.GET('/v1/customers/:id', get_one_customer)
+# a string path to the python module and function name is enough
+# as you can imagine this saves you time with manual imports
+# if you have a lot of handlers in your project
+router.GET('/v1/customers/:id', 'controllers.customers.get_one_customer')
 ```
 
 All HTTP methods i.e. `GET`, `POST` etc. are all supported

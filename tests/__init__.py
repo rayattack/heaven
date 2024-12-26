@@ -6,7 +6,7 @@ from heaven.utils import preprocessor
 with open("tests/asgi.json") as mocked:
     mock_scope = load(mocked)
     mock_metadata = preprocessor(mock_scope)
-    mocked.close()
+
 
 sample_body = {
     'type': 'http.request.body',
@@ -16,3 +16,4 @@ sample_body = {
 
 mock_body = {"body": b"{'flat': True, 'age': 35, 'title': 'Engineering Manager'}"}
 mock_receive = {}
+mock_send = {}

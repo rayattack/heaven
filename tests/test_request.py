@@ -1,6 +1,7 @@
 from json import dumps, load
 from unittest import TestCase
 from unittest.case import skip
+from unittest.mock import MagicMock
 
 from heaven import App, Application, Router
 from heaven import Request, Response, Context
@@ -29,8 +30,9 @@ def four(r: Request, w: Response, c: Context):
 
 class TestRequest(TestCase):
     def setUp(self) -> None:
+        self.app = App()
         self.request = Request(
-            mock_scope, mock_body, mock_receive, mock_metadata, App()
+            mock_scope, mock_body, mock_receive, mock_metadata, self.app
         )
         return super().setUp()
 
@@ -74,11 +76,18 @@ class TestRequest(TestCase):
         self.request._params = None
         self.assertDictEqual(self.request.params, {})
 
+    def test_params_coerce_data_type(self):
+        self.request.params = "age:int", "4"
+        self.request.params = "name:str", "Yeshua"
+        self.assertIsInstance(self.request.params.get('age'), int)
+        self.assertEqual(self.request.params.get('age'), 4)
+        self.assertEqual(self.request.params.get('name'), 'Yeshua')
+
     def test_query_strings_parsed_correctly(self):
         queries = self.request.queries
         self.assertEqual(queries.get("page"), "2")
         self.assertIsInstance(queries.get("pagination"), list)
-
+    
     def test_querystring_helper(self):
         self.assertIsNotNone(self.request.querystring)
 

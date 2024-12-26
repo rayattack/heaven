@@ -1,3 +1,4 @@
+from datetime import datetime, date
 from typing import Any, TYPE_CHECKING
 
 from heaven.form import Form
@@ -15,6 +16,7 @@ class Request:
         self._form = None
         self._route = None
         self._receive = receive
+        self.__queryhint = ''
         self._scope = scope
         self._subdomain, self._headers = metadata
         self._params = None
@@ -97,6 +99,15 @@ class Request:
         return Lookup({'address': address, 'port': port})
 
     @property
+    def qh(self) -> str:
+        return self.__queryhint
+
+    @qh.setter
+    def qh(self, val: str):
+        if self.__queryhint: raise ValueError('Querystring metadata already set')
+        self.__queryhint = val
+
+    @property
     def route(self):
         return self._route
 
@@ -122,7 +133,7 @@ class Request:
         self._mounted_from_application
 
     @property
-    def params(self):
+    def params(self) -> dict:
         if not self._dirty:
             if not self._params: self._params = {}
             self._params = {**self._params}
@@ -131,9 +142,18 @@ class Request:
 
     @params.setter
     def params(self, pair):
+        types = {'int': int, 'str': str}
         if not self._params:
             self._params = {}
-        self._params[pair[0]] = pair[1]
+        key, value = pair
+        finessed = key.split(':')
+        key = finessed[0]
+        kind = finessed[-1]
+        _type = types.get(kind)
+        if _type:
+            try: value = _type(value)
+            except: pass
+        self._params[key] = value
 
     @property
     def queries(self):
@@ -168,3 +188,4 @@ class Request:
     async def stream(self):
         """TODO: Revisit and implement with appropriate testing"""
         return await self._receive()
+
