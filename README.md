@@ -6,8 +6,8 @@ Heaven is a very light layer around ASGI with support for application mounting a
 
 
 - **Documentation** [Go To Docs](https://rayattack.github.io/heaven)
-- PyPi [https://pypi.org/project/heaven](https://pypi.org/project/heaven)
-- Source Code [Github](https://github.com/rayattack/heaven)
+- **PyPi** [https://pypi.org/project/heaven](https://pypi.org/project/heaven)
+- **Source Code** [Github](https://github.com/rayattack/heaven)
 
 <hr/>
 
