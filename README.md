@@ -28,6 +28,7 @@ async def get_record_by_id(req: Request, res: Response, ctx: Context):
     ctx.keep('results', results)
     await res.render('patients.html')
 ```
+<hr/>
 
 3. **Optional** : You can create functions to be initialised at app startup i.e. in `middlewares/database.py`
 ```py 
@@ -40,7 +41,7 @@ async def updatabase(app: App):
     # this will be available in all request handlers as request.app._.dbconn or req.app.peek('dbconn')
     app.keep('dbconn', pool)
 ```
-
+<hr/>
 
 4. Create your heaven application and connect your request handler e.g. in `src/example.py`
 ```py
@@ -58,14 +59,14 @@ router.ON(STARTUP, 'middlewares.connections.updatabase')
 # the path to your handler as a string is enough
 router.GET('/v1/patients/:id', 'controllers.patients.records.get_record_by_id')
 ```
-
+<hr/>
 
 5. You can run with uvicorn, gunicorn or any other asgi HTTP, HTTP2, and web socket protocol server of your choice.
 ```sh
 $ uvicorn app:example --reload
  * Running on http://127.0.0.1:8000
 ```
-
+<hr/>
 
 ## Contributing
 
