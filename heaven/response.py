@@ -210,3 +210,4 @@ class Response():
         if not templater.is_async: raise AttributeError('Async rendering not supported by sync renderer')
         template = templater.get_template(name)
         return await template.render_async({'ctx': self._ctx, **contexts})
+

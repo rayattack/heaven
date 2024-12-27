@@ -8,6 +8,24 @@ All handlers will receive this as their first argument i.e. **`...(req: Request,
 and all Request objects come with the following helper properties (bag of goodies).
 
 - **`req.app: Router`** -> An instance of the base heaven application
+    ```py 
+    from heaven import App
+
+    app = App()
+
+    # For instance if this app could talk it might tell you:
+    # Hello my name is `your-app` - I am a Python web application
+    # I spend my time serving web requests and 
+    # when I am free - I spend my time dreaming of becoming a chess engine
+    app_id = id(app)
+
+
+    async def handler(req, res, ctx):
+        # Hello again in all your handler functions
+        # mounted on `app` - Your friendly neigborhood
+        # `your-app` is present as well
+        assert id(req.app) == app_id
+    ```
 
 - **`req.body: bytes`** -> The body sent along with the request
     ```py 
@@ -22,6 +40,15 @@ and all Request objects come with the following helper properties (bag of goodie
     ```
 
 - **`req.cookies: dict`** -> All the cookies sent with request **_[case sensitive - case preserved]_**
+    ```py 
+    ...
+
+    def handler(req, res, ctx):
+        # cookies are case sensitive
+        token = req.cookies.get('Authorization')
+        different_token = req.cookies.get('authorization')  
+    ...
+    ```
 
 - **`req.form: Form`** -> If **content-type** of `req` is `multipart/form-data`, this will return a form object - a light
     wrapper on a dict.
@@ -76,7 +103,7 @@ and all Request objects come with the following helper properties (bag of goodie
         print(req.params)  # -> {'id': 1, 'message_id': '33'}
     ```
 
-    !!!Note
+    !!!Note "From v0.3.11"
         In case you missed it - you can coerce url parameters into the following python types
 
         - `/v1/customers/:param:int` -> `int`
@@ -85,7 +112,8 @@ and all Request objects come with the following helper properties (bag of goodie
 
 - **`req.queries: dict`** -> Query string key value pairs i.e. `?limit=45&asc=name` parsed into a dictionary
     
-    !!!Note
+    !!!Note "From v0.3.11"
+
         You can also coerce query parameters if present in the request url to the following python types
 
         - `?query1:datetime` -> `datetime.datetime`
@@ -93,6 +121,7 @@ and all Request objects come with the following helper properties (bag of goodie
         - `?query2:int` -> `int`
         - `?query3:str` -> `str`
         - `?query4:float` -> `float`
+        - `?query5:uuid` -> `uuid.UUID`
 
     To do this provide a suffix in your URL `route` declaration, and **don't worry - your URL will work
     the same as when it is not there**. The only difference will be that if the users of your app do provide

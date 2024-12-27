@@ -18,6 +18,7 @@ theme:
 
 plugins:
   - search
+  - tags
   - termynal
   - minify:
       minify_html: true

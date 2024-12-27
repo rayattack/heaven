@@ -176,7 +176,7 @@ class Routes(object):
         route: the route url/endpoint
         handler: function corresponding to the signature of a heaven handler
         """
-        queryhint = None
+        queryhint = ''
         if len(route.split('?')) > 1:
             route, queryhint = route.split('?', 1)
 
@@ -642,3 +642,4 @@ class Router(object):
 class Application(Router):...
 class App(Router):...
 class Server(Router):...
+

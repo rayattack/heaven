@@ -1,5 +1,6 @@
 from datetime import datetime, date
 from typing import Any, TYPE_CHECKING
+from uuid import UUID
 
 from heaven.form import Form
 from heaven.utils import Lookup
@@ -16,6 +17,7 @@ class Request:
         self._form = None
         self._route = None
         self._receive = receive
+        self.__qh = {}
         self.__queryhint = ''
         self._scope = scope
         self._subdomain, self._headers = metadata
@@ -38,6 +40,10 @@ class Request:
             try: key, value = kv_pair.split("=")
             except: continue
             current_value = qsd.get(key)
+            coercion = self.__qh.get(key)
+            if coercion:
+                try: value = coercion(value)
+                except: pass
             if not current_value:
                 qsd[key] = value
             else:
@@ -104,7 +110,21 @@ class Request:
 
     @qh.setter
     def qh(self, val: str):
+        '''Here we process queryhints so heaven can try to coerce query string values'''
         if self.__queryhint: raise ValueError('Querystring metadata already set')
+        kinds = {
+            'int': int,
+            'str': str,
+            'float': float,
+            'datetime': datetime.fromisoformat,
+            'date': date.fromisoformat,
+            'uuid': UUID
+        }
+        for pair in val.split('&'):
+            try: k, v = pair.split(':')
+            except: continue
+            kind = kinds.get(v)
+            if kind: self.__qh[k] = kind
         self.__queryhint = val
 
     @property

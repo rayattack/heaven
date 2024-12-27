@@ -1,4 +1,7 @@
 from collections import deque
+from datetime import date, datetime
+from uuid import UUID
+
 from ujson import dumps, loads
 from typing import Callable
 from unittest import TestCase, IsolatedAsyncioTestCase
@@ -49,6 +52,22 @@ class AsyncRouterTest(IsolatedAsyncioTestCase):
 
         # self.assertEqual(self.request.qh, 'page:int&pagination:int')
         mocked.assert_called_once()
+
+    async def test_query_hint_parsing(self):
+        qs = 'page=5&price=53.14&catalog=27261936-1407-415b-99f5-9e06a006640e&expires=2024-12-27T01:07:38.034213&log=2024-12-27'
+        suffix = 'page:int&price:float&catalog:uuid&expires:datetime&log:date'
+        scope = dict({**mock_scope})
+        scope['query_string'] = qs
+        async def receive(): return {}
+        async def send(data): pass
+        async def handler(req, res, ctx):
+            assert isinstance(req.queries.get('page'), int)
+            assert isinstance(req.queries.get('price'), float)
+            assert isinstance(req.queries.get('expires'), datetime)
+            assert isinstance(req.queries.get('log'), date)
+            assert isinstance(req.queries.get('catalog'), UUID)
+        self.app.GET(f'/customers/:id/orders?{suffix}', handler)
+        await self.app(scope, receive, send)
 
     async def test_query_hint_present(self):
         async def receive(): return {}
