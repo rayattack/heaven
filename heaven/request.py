@@ -73,7 +73,7 @@ class Request:
             for cookie in cookies:
                 try: k, v = cookie.split("=", 1)
                 except: pass
-                else: csd[k.lower()] = v
+                else: csd[k] = v
             self._cookies = csd
         return self._cookies
 
@@ -112,13 +112,18 @@ class Request:
     def qh(self, val: str):
         '''Here we process queryhints so heaven can try to coerce query string values'''
         if self.__queryhint: raise ValueError('Querystring metadata already set')
+        booleans = {'false': False, 'true': True, '1': True, 0: False}
+        def boolean(v: str) -> bool:
+            if not isinstance(v, str): return False
+            return booleans.get(v.lower())
         kinds = {
             'int': int,
             'str': str,
             'float': float,
             'datetime': datetime.fromisoformat,
             'date': date.fromisoformat,
-            'uuid': UUID
+            'uuid': UUID,
+            'bool': boolean
         }
         for pair in val.split('&'):
             try: k, v = pair.split(':')

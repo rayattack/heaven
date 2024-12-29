@@ -54,8 +54,8 @@ class AsyncRouterTest(IsolatedAsyncioTestCase):
         mocked.assert_called_once()
 
     async def test_query_hint_parsing(self):
-        qs = 'page=5&price=53.14&catalog=27261936-1407-415b-99f5-9e06a006640e&expires=2024-12-27T01:07:38.034213&log=2024-12-27'
-        suffix = 'page:int&price:float&catalog:uuid&expires:datetime&log:date'
+        qs = 'page=5&price=53.14&catalog=27261936-1407-415b-99f5-9e06a006640e&expires=2024-12-27T01:07:38.034213&log=2024-12-27&prio=TrUe'
+        suffix = 'page:int&price:float&catalog:uuid&expires:datetime&log:date&prio:bool'
         scope = dict({**mock_scope})
         scope['query_string'] = qs
         async def receive(): return {}
@@ -66,6 +66,8 @@ class AsyncRouterTest(IsolatedAsyncioTestCase):
             assert isinstance(req.queries.get('expires'), datetime)
             assert isinstance(req.queries.get('log'), date)
             assert isinstance(req.queries.get('catalog'), UUID)
+            assert isinstance(req.queries.get('prio'), bool)
+            assert req.queries.get('prio') == True
         self.app.GET(f'/customers/:id/orders?{suffix}', handler)
         await self.app(scope, receive, send)
 

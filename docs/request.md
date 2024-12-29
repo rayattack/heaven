@@ -103,7 +103,7 @@ and all Request objects come with the following helper properties (bag of goodie
         print(req.params)  # -> {'id': 1, 'message_id': '33'}
     ```
 
-    !!!Note "From v0.3.11"
+    !!!Note "From v0.4.2"
         In case you missed it - you can coerce url parameters into the following python types
 
         - `/v1/customers/:param:int` -> `int`
@@ -112,7 +112,7 @@ and all Request objects come with the following helper properties (bag of goodie
 
 - **`req.queries: dict`** -> Query string key value pairs i.e. `?limit=45&asc=name` parsed into a dictionary
     
-    !!!Note "From v0.3.11"
+    !!!Note "From v0.4.2"
 
         You can also coerce query parameters if present in the request url to the following python types
 
@@ -122,22 +122,23 @@ and all Request objects come with the following helper properties (bag of goodie
         - `?query3:str` -> `str`
         - `?query4:float` -> `float`
         - `?query5:uuid` -> `uuid.UUID`
+        - `?query6:bool` -> `bool` **v0.4.3** 
 
-    To do this provide a suffix in your URL `route` declaration, and **don't worry - your URL will work
-    the same as when it is not there**. The only difference will be that if the users of your app do provide
-    query values then **Heaven** will attempt to parse them into the correct python data types.
-    ```py
-    ...
+      To do this provide a suffix in your URL `route` declaration, and **don't worry - your URL will work
+      the same as when it is not there**. The only difference will be that if the users of your app do provide
+      query values then **Heaven** will attempt to parse them into the correct python data types.
+      ```py
+      ...
 
-    # for instance for the following route
-    app.GET('/customers/:id?limit:int&paginate:int&page:str')
+      # for instance for the following route
+      app.GET('/customers/:id?limit:int&paginate:int&page:str')
 
-    # when a user visits /customers/1?limit=44&page=3&pagination=100
-    def get_customer_messag_by_id(req: Request, res: Response, ctx: Context):
-        print(req.queries)  # -> {'limit': 44, 'pagination': 100, 'page': '3'}
+      # when a user visits /customers/1?limit=44&page=3&pagination=100
+      def get_customer_messag_by_id(req: Request, res: Response, ctx: Context):
+          print(req.queries)  # -> {'limit': 44, 'pagination': 100, 'page': '3'}
 
-    ...
-    ```
+      ...
+      ```
 
 
 

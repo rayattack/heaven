@@ -74,6 +74,10 @@ def _isparamx(r: str):
     return (':', r[1:],) if r.startswith(':') else (r, None,)
 
 
+def _purify_colons(routes):
+    return 
+
+
 def _notify(width=80, event=STARTUP): #pragma: nocover
     drawline = lambda: print('=' * width)
     drawline()
@@ -99,7 +103,7 @@ def _string_to_function_handler(handler: str):
 class Route(object):
     def __init__(self, route: str, handler: Callable, router: 'Router') -> None:
         self.heaven_instance = router
-        self.parameterized = False
+        self.parameterized = {}
         self.queryhint = None
         self.route = route
         self.handler = handler
@@ -109,7 +113,10 @@ class Route(object):
         matched: str = ''
         node: Route = self
         route_at_deviation = '/'.join(routes)
+
+        # grand father deviation point in case we are dealing from the start with a catch all route
         deviation_point: Route = node.children.get('*')
+
         while routes:
             route = routes.popleft()
             current_node = node.children.get(route)
@@ -117,8 +124,8 @@ class Route(object):
                 # is there a parameterized child?
                 current_node = node.children.get(':')
                 if current_node:
-                    """Store the label that immediately follows the ':' represented by paremeterized
-                    and its value represented as route into request.params"""
+                    """Store the label that immediately follows the ':' into request params
+                    using the value of parameterized from the routes.add() phase"""
                     r.params = current_node.parameterized, route
 
                     if(node.children.get('*')):
@@ -131,29 +138,33 @@ class Route(object):
                     node = current_node
                     continue
 
+                # you get here if no ':' above and at that point return what you find 
                 wildcard = node.children.get('*')
                 if wildcard:  #pragma: nocover
                     r.params = '*', '/'.join([route, *routes])
-                    r.qh = wildcard.queryhint
                     return wildcard.route, wildcard.handler
 
+                # did we find a deviation point beside a ':' earlier or maybe grand parent?
+                # then return that
                 if deviation_point:
                     r.params = '*', route_at_deviation
-                    r.qh = deviation_point.queryhint
                     return deviation_point.route, deviation_point.handler
                 
-                # This is one place where the deviation point is used - the remainder of the url supplied is
-                # passed into request.params as the value for '*' for optional lookup purposes
+                # no current node and no wildcard or ':' so return '' and not found
                 return matched, self.not_found
+
+            # move to the next
             node = current_node
 
+        # if we encountered a node along the way skip this block
         # was there a wildcard encountered along the way
+        # this can be the grand parent * or the one encountered after ':' if any
         if deviation_point and not node.route:
             r.params = '*', route_at_deviation
-            r.qh = deviation_point.queryhint
             return deviation_point.route, deviation_point.handler
 
-        # here as well we have a return path so set qh
+        # default node.route is None and handler as well
+        # so this returns None if no route encountered or what was encountered in while block above
         r.qh = node.queryhint
         return node.route, node.handler
 
@@ -206,6 +217,7 @@ class Routes(object):
         # get the length of the routes so we can use for validation checks in a loop later
         stop_at = len(routes) - 1
 
+        parameter_address = '/'.join([':' if route.startswith(':') else route for route in routes])
         for index, heaven in enumerate(routes):
             _heaven, _parameterized = _isparamx(heaven)
             new_route_node = route_node.children.get(_heaven)
@@ -214,7 +226,7 @@ class Routes(object):
                 route_node.children[_heaven] = new_route_node
 
             route_node = new_route_node
-            route_node.parameterized = _parameterized
+            route_node.parameterized[parameter_address] = _parameterized 
 
             if index == stop_at:
                 assert route_node.handler is None, f'Handler already registered for route: ${_heaven}'
