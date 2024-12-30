@@ -167,17 +167,9 @@ class Request:
 
     @params.setter
     def params(self, pair):
-        types = {'int': int, 'str': str}
         if not self._params:
             self._params = {}
         key, value = pair
-        finessed = key.split(':')
-        key = finessed[0]
-        kind = finessed[-1]
-        _type = types.get(kind)
-        if _type:
-            try: value = _type(value)
-            except: pass
         self._params[key] = value
 
     @property

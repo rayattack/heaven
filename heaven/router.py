@@ -5,7 +5,7 @@ from http import HTTPStatus
 from importlib import import_module
 from inspect import iscoroutinefunction
 from os import path, getcwd
-from typing import Callable, Tuple
+from typing import Any, Callable, Tuple
 
 from aiofiles import open as async_open_file
 from jinja2 import Environment, FileSystemLoader, select_autoescape
@@ -74,10 +74,6 @@ def _isparamx(r: str):
     return (':', r[1:],) if r.startswith(':') else (r, None,)
 
 
-def _purify_colons(routes):
-    return 
-
-
 def _notify(width=80, event=STARTUP): #pragma: nocover
     drawline = lambda: print('=' * width)
     drawline()
@@ -100,9 +96,32 @@ def _string_to_function_handler(handler: str):
     return handler
 
 
+class Parameter(object):
+    def __init__(self, value: Any, potentials: dict[str, str]):
+        '''Potentials are a dictionary of potential parameter names'''
+        self._value = value
+        self._potentials = potentials
+
+    def resolve(self, parameter_address: str) -> Tuple[str, Any]:
+        value = self._value
+        param = self._potentials.get(parameter_address)
+
+        stats = param.split(':')
+        if len(stats) == 2: key, kind = stats
+        else: key, kind = param, ''
+        cast = {'int': int, 'str': str}.get(kind.lower())
+
+        # no need for if use None to cast fails and cast only exists deliberately
+        try: value = cast(value)
+        except: pass
+        return key, value
+
+
+
 class Route(object):
     def __init__(self, route: str, handler: Callable, router: 'Router') -> None:
         self.heaven_instance = router
+        self.parameters: list[Parameter] = []  # we use this to save parameters
         self.parameterized = {}
         self.queryhint = None
         self.route = route
@@ -124,9 +143,8 @@ class Route(object):
                 # is there a parameterized child?
                 current_node = node.children.get(':')
                 if current_node:
-                    """Store the label that immediately follows the ':' into request params
-                    using the value of parameterized from the routes.add() phase"""
-                    r.params = current_node.parameterized, route
+                    # we are going to use this later when we know the address that has been matched
+                    self.parameters.append(Parameter(value = route, potentials = current_node.parameterized))
 
                     if(node.children.get('*')):
                         """If there was also a wildcard seeing as placeholder ':' takes precedence, then
@@ -163,6 +181,10 @@ class Route(object):
             r.params = '*', route_at_deviation
             return deviation_point.route, deviation_point.handler
 
+
+        # time to process what parameters we saw
+        for parameter in self.parameters:
+            r.params = parameter.resolve(node.route)
         # default node.route is None and handler as well
         # so this returns None if no route encountered or what was encountered in while block above
         r.qh = node.queryhint
@@ -217,16 +239,17 @@ class Routes(object):
         # get the length of the routes so we can use for validation checks in a loop later
         stop_at = len(routes) - 1
 
-        parameter_address = '/'.join([':' if route.startswith(':') else route for route in routes])
-        for index, heaven in enumerate(routes):
-            _heaven, _parameterized = _isparamx(heaven)
-            new_route_node = route_node.children.get(_heaven)
+        for index, part in enumerate(routes):
+            # this gives us ':' and the remainder i.e. xxx if heaven is of the form :xxx
+            # otherwise it will return heaven if heaven is any other str
+            label, remainder = _isparamx(part)
+            new_route_node = route_node.children.get(label)
             if not new_route_node:
                 new_route_node = Route(None, None, router)
-                route_node.children[_heaven] = new_route_node
+                route_node.children[label] = new_route_node
 
             route_node = new_route_node
-            route_node.parameterized[parameter_address] = _parameterized 
+            if remainder: route_node.parameterized[route] = remainder
 
             if index == stop_at:
                 assert route_node.handler is None, f'Handler already registered for route: ${_heaven}'

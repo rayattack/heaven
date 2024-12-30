@@ -76,13 +76,6 @@ class TestRequest(TestCase):
         self.request._params = None
         self.assertDictEqual(self.request.params, {})
 
-    def test_params_coerce_data_type(self):
-        self.request.params = "age:int", "4"
-        self.request.params = "name:str", "Yeshua"
-        self.assertIsInstance(self.request.params.get('age'), int)
-        self.assertEqual(self.request.params.get('age'), 4)
-        self.assertEqual(self.request.params.get('name'), 'Yeshua')
-
     def test_query_strings_parsed_correctly(self):
         queries = self.request.queries
         self.assertEqual(queries.get("page"), "2")

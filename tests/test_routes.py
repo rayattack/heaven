@@ -53,6 +53,34 @@ class AsyncRouterTest(IsolatedAsyncioTestCase):
         # self.assertEqual(self.request.qh, 'page:int&pagination:int')
         mocked.assert_called_once()
 
+    async def test_param_hint_parsing(self):
+        scope = dict({**mock_scope})
+        
+        async def receive(): return {}
+        async def send(data): pass
+
+        async def alpha(req, res, ctx):
+            self.assertEqual(req.params.get('id'), 50)
+            self.assertIsInstance(req.params.get('id'), int)
+            self.assertEqual(req.params.get('order-id'), '13423')
+
+        async def beta(req, res, ctx):
+            self.assertEqual(req.params.get('age'), '70')
+            self.assertEqual(req.params.get('id'), 'back-toback')
+
+        url = '/v1/profiles/50/orders/13423'
+        scope['path'] = url
+        scope['raw_path'] = url
+        self.app.GET('/v1/profiles/:id:int/orders/:order-id', alpha)
+        await self.app(scope, receive, send)
+
+        url = '/v1/profiles/70/orders/back-toback/comments'
+        scope['path'] = url
+        scope['raw_path'] = url
+        self.app.GET('/v1/profiles/:age:str/orders/:id/comments', beta)
+        await self.app(scope, receive, send)
+
+
     async def test_query_hint_parsing(self):
         qs = 'page=5&price=53.14&catalog=27261936-1407-415b-99f5-9e06a006640e&expires=2024-12-27T01:07:38.034213&log=2024-12-27&prio=TrUe'
         suffix = 'page:int&price:float&catalog:uuid&expires:datetime&log:date&prio:bool'

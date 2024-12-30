@@ -245,18 +245,18 @@ class RoutesTest(TestCase):
         self.assertIsNotNone(v1_route_node)
         self.assertIsNone(v1_route_node.route)
         self.assertIsNone(v1_route_node.handler)
-        self.assertIsNone(v1_route_node.parameterized)
+        self.assertDictEqual(v1_route_node.parameterized, {})
 
         customers_route_node = v1_route_node.children.get('customers')
         self.assertIsNotNone(customers_route_node)
         self.assertEqual(customers_route_node.route, '/v1/customers')
         self.assertEqual(customers_route_node.handler, three)
-        self.assertIsNone(customers_route_node.parameterized)
+        self.assertDictEqual(customers_route_node.parameterized, {})
     
         id_route_node = customers_route_node.children.get(':')
         self.assertIsNotNone(id_route_node)
         self.assertTrue(id_route_node.parameterized)
-        self.assertEqual(id_route_node.parameterized, 'id')
+        self.assertEqual(id_route_node.parameterized, {'/v1/customers/:id/receipts': 'id'})
         
         receipts_route_node = id_route_node.children.get('receipts')
         self.assertIsNotNone(receipts_route_node)

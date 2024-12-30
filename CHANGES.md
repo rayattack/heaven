@@ -1,3 +1,11 @@
+### 0.5.0
+- Major change to the underlying engine and how heaven parses URIs without affecting the API to add support for parameter hinting
+    and extremely flexible parameter labels e.g. `/v1/profiles/:id/orders` and `/v1/profiles/:identity` is now possible i.e. you 
+    can now label parameters different things on different routes.
+
+### 0.4.2
+- Added support for param hints i.e. specifying the data type for heaven to automatically parse params into
+
 ### VERSION 0.3.10
 - Add the **IP Object** via the `req.ip` object property that provides an `ip.address` and `ip.port` expanded getter for the values.
 
