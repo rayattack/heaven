@@ -1,3 +1,7 @@
+### 0.5.1
+- Add more support for typing and type hints
+- Fix: Parameters should be processed
+
 ### 0.5.0
 - Major change to the underlying engine and how heaven parses URIs without affecting the API to add support for parameter hinting
     and extremely flexible parameter labels e.g. `/v1/profiles/:id/orders` and `/v1/profiles/:identity` is now possible i.e. you 

@@ -121,7 +121,6 @@ class Parameter(object):
 class Route(object):
     def __init__(self, route: str, handler: Callable, router: 'Router') -> None:
         self.heaven_instance = router
-        self.parameters: list[Parameter] = []  # we use this to save parameters
         self.parameterized = {}
         self.queryhint = None
         self.route = route
@@ -132,6 +131,7 @@ class Route(object):
         matched: str = ''
         node: Route = self
         route_at_deviation = '/'.join(routes)
+        parameters = []
 
         # grand father deviation point in case we are dealing from the start with a catch all route
         deviation_point: Route = node.children.get('*')
@@ -144,7 +144,7 @@ class Route(object):
                 current_node = node.children.get(':')
                 if current_node:
                     # we are going to use this later when we know the address that has been matched
-                    self.parameters.append(Parameter(value = route, potentials = current_node.parameterized))
+                    parameters.append(Parameter(value = route, potentials = current_node.parameterized))
 
                     if(node.children.get('*')):
                         """If there was also a wildcard seeing as placeholder ':' takes precedence, then
@@ -183,7 +183,7 @@ class Route(object):
 
 
         # time to process what parameters we saw
-        for parameter in self.parameters:
+        for parameter in parameters:
             r.params = parameter.resolve(node.route)
         # default node.route is None and handler as well
         # so this returns None if no route encountered or what was encountered in while block above
