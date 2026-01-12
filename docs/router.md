@@ -15,6 +15,39 @@ app.PUT ('/users/:id', update_user)
 app.DELETE('/users/:id', delete_user)
 ```
 
+## The String Paradigm (Lazy Loading)
+
+Heaven supports a "String Paradigm" that allows you to pass the **import path** of your handler instead of the function itself.
+
+**This works everywhere.** Routes, Hooks, Lifecycle events, and Daemons.
+
+#### 1. Routes
+
+```python
+# No need to import the function!
+app.GET('/users', 'controllers.user.get_all')
+app.POST('/users', 'controllers.user.create')
+app.PUT ('/users/:id', update_user)
+app.DELETE('/users/:id', delete_user)
+```
+
+#### 2. Hooks (Middleware)
+```python
+# Instead of: from middleware.auth import check_token
+app.BEFORE('/dashboard/*', 'middleware.auth.check_token')
+```
+
+#### 3. Lifecycle
+```python
+# Instead of: from db import connect
+app.ON('startup', 'db.connect')
+```
+
+### Why use strings?
+1.  **Speed**: Modules are imported only when the application starts or when routes are hit.
+2.  **Cleanliness**: No more 50-line import blocks at the top of your file.
+3.  **Decoupling**: Solves circular import headaches instantly.
+
 ## Subdomains
 
 Heaven handles subdomains natively. No "Blueprint" confusion.
