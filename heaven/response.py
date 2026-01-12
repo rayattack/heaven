@@ -1,7 +1,7 @@
 import mimetypes
 from http import HTTPStatus
 from os import path
-from typing import AsyncGenerator, Optional, Union, TYPE_CHECKING
+from typing import Any, AsyncGenerator, Optional, Union, TYPE_CHECKING
 
 from functools import singledispatch, update_wrapper
 
@@ -97,6 +97,17 @@ class Response():
     @property
     def deferred(self):
         return len(self._deferred) > 0
+
+    @property
+    def json(self) -> Any:
+        if isinstance(self.body, (dict, list)):
+            return self.body
+        import json
+        return json.loads(self.body)
+
+    @property
+    def text(self) -> str:
+        return self.body.decode()
 
     def header(self, key, val) -> 'Response':
         _encode = lambda k: k.encode('utf-8') if isinstance(k, str) else k

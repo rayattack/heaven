@@ -399,12 +399,15 @@ class SchemaRegistry:
         self._router = router
         self._schemas = {}
 
-    def add(self, method: str, route: str, expects=None, returns=None, summary=None, description=None):
+    def add(self, method: str, route: str, expects=None, returns=None, summary=None, description=None, project=None, partial=None, strict=None):
         self._schemas[(method.upper(), route)] = {
             'expects': expects,
             'returns': returns,
             'summary': summary,
-            'description': description
+            'description': description,
+            'project': project,
+            'partial': partial,
+            'strict': strict
         }
 
     def POST(self, route: str, **kwargs): self.add('POST', route, **kwargs)
@@ -415,7 +418,7 @@ class SchemaRegistry:
 
 
 class Router(object):
-    def __init__(self, configurator=None):
+    def __init__(self, configurator=None, project_output=True, allow_partials=False, fail_on_output=True):
         self.__ws = None
         self.finalized = False
         self.initializers = deque()
@@ -430,10 +433,20 @@ class Router(object):
         self.schema = SchemaRegistry(self)
         self._docs_config = None
         self._baked = False
+        self._project_output = project_output
+        self._allow_partials = allow_partials
+        self._fail_on_output = fail_on_output
 
     @property
     def _(self):
         return Look(self._buckets)
+
+    @property
+    def earth(self):
+        if not hasattr(self, '_earth'):
+            from .earth import Earth
+            self._earth = Earth(self)
+        return self._earth
 
     def _bake_schemas(self):
         if self._baked: return
@@ -449,6 +462,51 @@ class Router(object):
                         res.body = str(e).encode()
                         res.abort(res.body)
                 self.BEFORE(route, validate_hook)
+            
+            returns = meta.get('returns')
+            if returns:
+                project = meta.get('project')
+                if project is None: project = self._project_output
+                
+                partial = meta.get('partial')
+                if partial is None: partial = self._allow_partials
+                
+                strict = meta.get('strict')
+                if strict is None: strict = self._fail_on_output
+                
+                async def output_hook(req, res, ctx, schema=returns, project=project, partial=partial, strict=strict):
+                    if res.body is None or res._abort: return
+                    # Skip if body is already bytes/generator (user manually handled it)
+                    if isinstance(res.body, (bytes, str)) or hasattr(res.body, '__aiter__'):
+                        return
+
+                    try:
+                        # 1. Project/Clean if enabled - msgspec.convert drops extra fields by default
+                        if project:
+                            res.body = msgspec.convert(res.body, type=schema)
+                        
+                        # 2. Encode to JSON
+                        res.headers = "Content-Type", "application/json"
+                        res.body = msgspec.json.encode(res.body)
+                    except Exception as e:
+                        # If partial matching is enabled, we might want to try encoding without conversion if conversion failed
+                        if partial and project:
+                            try:
+                                res.headers = "Content-Type", "application/json"
+                                res.body = msgspec.json.encode(res.body)
+                                return # Success with partial (original data)
+                            except: pass
+
+                        if strict:
+                            res.status = 500
+                            res.body = f"Output Validation Error: {str(e)}".encode()
+                        else:
+                            print(f"⚠️ Heaven Output Warning [{req.route}]: {str(e)}")
+                            # Fallback to normal encoding
+                            res.headers = "Content-Type", "application/json"
+                            res.body = msgspec.json.encode(res.body)
+                
+                self.AFTER(route, output_hook)
         self._baked = True
 
     async def __call__(self, scope, receive, send):

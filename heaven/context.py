@@ -9,6 +9,12 @@ class Context():
     def keep(self, key, value):
         self._data[key] = value
 
+    def peek(self, key):
+        return self._data.get(key)
+
+    def unkeep(self, key):
+        return self._data.pop(key, None)
+
     def __getattr__(self, key) -> Any:
         return self._data.get(key)
 
