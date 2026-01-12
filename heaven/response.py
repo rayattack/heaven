@@ -2,6 +2,7 @@ import mimetypes
 from http import HTTPStatus
 from os import path
 from typing import Any, AsyncGenerator, Optional, Union, TYPE_CHECKING
+import msgspec
 
 from functools import singledispatch, update_wrapper
 
@@ -102,8 +103,7 @@ class Response():
     def json(self) -> Any:
         if isinstance(self.body, (dict, list)):
             return self.body
-        import json
-        return json.loads(self.body)
+        return msgspec.json.decode(self.body)
 
     @property
     def text(self) -> str:
@@ -207,6 +207,31 @@ class Response():
     @status.setter
     def status(self, value: int) -> 'Response':
         self._status = value
+        return self
+
+    def stream(self, generator, content_type='text/plain', status=200, sse=False) -> 'Response':
+        """Stream data back to the client using an async generator"""
+        self.status = status
+        
+        if sse:
+            self.headers = 'Content-Type', 'text/event-stream'
+            self.headers = 'Cache-Control', 'no-cache'
+            self.headers = 'Connection', 'keep-alive'
+            self.headers = 'X-Accel-Buffering', 'no'  # Disable Nginx buffering
+            
+            async def sse_wrapper():
+                async for item in generator:
+                    # If item is a dict or list, encode as JSON
+                    if isinstance(item, (dict, list)):
+                        item = msgspec.json.encode(item).decode()
+                    yield f"data: {item}\n\n".encode()
+            self.body = sse_wrapper()
+        else:
+            self.headers = 'Content-Type', content_type
+            self.headers = 'Cache-Control', 'no-cache'
+            self.headers = 'Transfer-Encoding', 'chunked'
+            self.body = generator
+            
         return self
 
     @property

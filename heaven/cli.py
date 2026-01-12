@@ -4,6 +4,8 @@ import importlib
 import inspect
 from typing import Optional, Any
 import uvicorn
+import json
+from rich.syntax import Syntax
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
@@ -103,6 +105,90 @@ def routes(app_path: Optional[str] = None):
 
     console.print(table)
 
+def handlers(target_path: Optional[str] = None):
+    """Deep inspection of handlers, showing source code if a path is provided."""
+    app_path = find_app()
+    if not app_path:
+        console.print("[bold red]Error:[/bold red] Could not find an app.")
+        sys.exit(1)
+
+    try:
+        module_name, obj_name = app_path.split(':')
+        module = importlib.import_module(module_name)
+        app = getattr(module, obj_name)
+    except Exception as e:
+        console.print(f"[bold red]Error loading app:[/bold red] {e}")
+        sys.exit(1)
+
+    if target_path:
+        # Find specific handler
+        found = False
+        for subdomain, routes_obj in app.subdomains.items():
+            for method, paths in routes_obj.cache.items():
+                for path, handler in paths.items():
+                    if path == target_path:
+                        found = True
+                        try:
+                            source = inspect.getsource(handler)
+                            file = inspect.getsourcefile(handler)
+                            line = inspect.getsourcelines(handler)[1]
+                            
+                            syntax = Syntax(source, "python", theme="monokai", line_numbers=True, start_line=line)
+                            console.print(Panel(
+                                syntax,
+                                title=f"[bold green]{method} {path}[/bold green]",
+                                subtitle=f"[dim]{file}:{line}[/dim]",
+                                expand=False
+                            ))
+                        except Exception as e:
+                             console.print(f"[bold yellow]Handler found but source unavailable:[/bold yellow] {handler}")
+                             console.print(f"[dim]Reason: {e}[/dim]")
+        if not found:
+            console.print(f"[bold red]Error:[/bold red] No handler found for path [bold cyan]{target_path}[/bold cyan]")
+    else:
+        # Show all handlers with locations
+        table = Table(title="[bold cyan]Heaven Handler Map[/bold cyan]")
+        table.add_column("Method", style="bold magenta")
+        table.add_column("Path", style="bold white")
+        table.add_column("Handler", style="green")
+        table.add_column("Location", style="dim")
+
+        for subdomain, routes_obj in app.subdomains.items():
+            for method, paths in routes_obj.cache.items():
+                for path, handler in paths.items():
+                    try:
+                        file = os.path.relpath(inspect.getsourcefile(handler))
+                        line = inspect.getsourcelines(handler)[1]
+                        loc = f"{file}:{line}"
+                    except:
+                        loc = "unknown"
+                    
+                    name = getattr(handler, '__name__', str(handler))
+                    table.add_row(method, path, name, loc)
+        
+        console.print(table)
+
+def schema(output: str = "swagger.json"):
+    """Export OpenAPI specification to a JSON file."""
+    app_path = find_app()
+    if not app_path:
+        console.print("[bold red]Error:[/bold red] Could not find an app.")
+        sys.exit(1)
+        
+    try:
+        module_name, obj_name = app_path.split(':')
+        module = importlib.import_module(module_name)
+        app = getattr(module, obj_name)
+        
+        spec = app.openapi()
+        with open(output, 'w') as f:
+            json.dump(spec, f, indent=2)
+            
+        console.print(f"[bold green]Success![/bold green] OpenAPI spec exported to [bold cyan]{output}[/bold cyan]")
+    except Exception as e:
+        console.print(f"[bold red]Error exporting schema:[/bold red] {e}")
+        sys.exit(1)
+
 def main():
     args = sys.argv[1:]
     
@@ -117,11 +203,19 @@ def main():
         uvicorn.run(app_path, host="127.0.0.1", port=8000, reload=True)
     elif args[0] == "routes":
         routes()
+    elif args[0] == "handlers":
+        path = args[1] if len(args) > 1 else None
+        handlers(path)
+    elif args[0] == "schema":
+        output = args[1] if len(args) > 1 else "swagger.json"
+        schema(output)
     else:
         console.print(f"[bold yellow]Usage:[/bold yellow]")
-        console.print("  [bold cyan]heaven fly[/bold cyan]          - Zero-config auto-discovery run")
-        console.print("  [bold cyan]heaven run <app>[/bold cyan]    - Run a specific app")
-        console.print("  [bold cyan]heaven routes[/bold cyan]       - Show all registered routes")
+        console.print("  [bold cyan]heaven fly[/bold cyan]              - Zero-config auto-discovery run")
+        console.print("  [bold cyan]heaven run <app>[/bold cyan]        - Run a specific app")
+        console.print("  [bold cyan]heaven routes[/bold cyan]           - Show all registered routes")
+        console.print("  [bold cyan]heaven handlers [path][/bold cyan]   - Deep inspection of handlers")
+        console.print("  [bold cyan]heaven schema [file][/bold cyan]     - Export OpenAPI spec to JSON")
 
 if __name__ == "__main__":
     main()

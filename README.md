@@ -63,7 +63,7 @@ app.DOCS('/docs')
 4. **Fly** (CLI)
 Heaven comes with a beautiful, zero-config CLI.
 ```bash
-pip install "heaven[rich]"
+pip install heaven
 
 # Auto-discovery & run with reload
 heaven fly
