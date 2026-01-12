@@ -90,6 +90,13 @@ class Earth:
 
         res = await engine.handle(scope, receive, send, metadata=metadata, application=self._app)
         
+        # Consume streaming body for easy testing
+        if hasattr(res.body, '__aiter__'):
+            chunks = []
+            async for chunk in res.body:
+                chunks.append(chunk)
+            res.body = b"".join(chunks)
+
         # Session tracking (Simplified)
         if self._track_session:
             for k, v in res.headers:

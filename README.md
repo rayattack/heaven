@@ -49,15 +49,31 @@ async def welcome(req, res, ctx):
 
 app.GET('/api/v1/welcome', welcome)
 
-# Automatic OpenAPI Docs
-from msgspec import Struct
-class User(Struct):
+3. **Protect** (Automatic OpenAPI)
+```python
+from heaven import Schema
+
+class User(Schema):
     name: str
 
 app.schema.POST('/user', expects=User, summary="Create User")
 app.DOCS('/docs')
+```
 
-# Background Daemon (Native Periodic Tasks)
+4. **Fly** (CLI)
+Heaven comes with a beautiful, zero-config CLI.
+```bash
+pip install heaven
+
+# Auto-discovery & run with reload
+heaven fly
+
+# Visualize your API structure
+heaven routes
+```
+
+5. **Daemon** (Background)
+```python
 async def pulse(app):
     print("Heartbeat...")
     return 5 # Run every 5 seconds
@@ -65,7 +81,7 @@ async def pulse(app):
 app.daemons = pulse
 ```
 
-3. **Run**
+6. **Run** (Standard)
 ```sh
 $ uvicorn app:app --reload
 ```
