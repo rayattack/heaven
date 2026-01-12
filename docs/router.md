@@ -272,6 +272,11 @@ app.POST('/orders', create_order)
 
 Daemons are one of Heaven's most powerful features. They are long-running background tasks that live for the entire lifecycle of your application.
 
+!!! warning "The Blocking Rule"
+    Heaven runs on a single-threaded event loop. If you write a background task that performs heavy computation or blocking I/O (like `time.sleep()`), it will freeze the entire server. 
+
+    **Note**: As of version 0.6.2, Heaven automatically offloads synchronous daemons to a separate thread pool to prevent accidental freezes, but using `async` functions remains the gold standard for performance.
+
 Unlike FastAPI or Flask, which often require external libraries like Celery or Dramatiq for background processing, Heaven has background workers built directly into the core.
 
 ### Why Daemons are powerful:

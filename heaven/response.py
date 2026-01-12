@@ -283,4 +283,3 @@ class Response():
         self.body = file_sender()
         self.status = HTTPStatus.OK
         return self
-

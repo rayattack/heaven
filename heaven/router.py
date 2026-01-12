@@ -619,11 +619,15 @@ class Router(object):
     def daemons(self, afunction):
         @wraps(afunction)
         async def _daemon(app):
-            if (iscoroutinefunction(afunction)): sleeps = await afunction(app)
-            else: sleeps = afunction(app)
+            loop = get_running_loop()
+            if (iscoroutinefunction(afunction)): 
+                sleeps = await afunction(app)
+            else: 
+                # Run sync functions in a thread pool to avoid blocking the event loop
+                sleeps = await loop.run_in_executor(None, afunction, app)
+            
             if sleeps is None or sleeps == False: return
             await asleep(sleeps)
-            loop = get_running_loop()
             loop.create_task(_daemon(app))
         self.__daemons.append(_daemon)
 
