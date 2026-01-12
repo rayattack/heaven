@@ -142,6 +142,38 @@ app.POST('/orders', create_order)
 
 -----------------------
 
+-----------------------
+
+## Daemons: Native Background Tasks 👻
+
+Daemons are one of Heaven's most powerful features. They are long-running background tasks that live for the entire lifecycle of your application.
+
+Unlike FastAPI or Flask, which often require external libraries like Celery or Dramatiq for background processing, Heaven has background workers built directly into the core.
+
+### Why Daemons are powerful:
+1. **Periodic Jobs**: Easily run a task every `X` seconds (like a heartbeat or cache warmer).
+2. **Event Loops**: Listen to a message queue or a database stream in the background.
+3. **Internal Tools**: Run health checks or cleanup scripts without affecting request latency.
+
+### Creating a Daemon
+
+A daemon is just a function that takes the `app` instance as its only argument.
+
+```python
+async def my_daemon(app):
+    print("Doing background work...")
+    
+    # If you return a number, the daemon will sleep for that many 
+    # seconds and then run again automatically.
+    return 10 
+
+app.daemons = my_daemon
+```
+
+If you return `None` or `False`, the daemon will run exactly once and then stop.
+
+-----------------------
+
 ##### 2. Running your heaven application in production
 
 ```sh

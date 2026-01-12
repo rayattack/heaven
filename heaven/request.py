@@ -1,6 +1,7 @@
 from datetime import datetime, date
 from typing import Any, TYPE_CHECKING
 from uuid import UUID
+from urllib.parse import parse_qs
 
 from heaven.form import Form
 from heaven.utils import Lookup
@@ -33,29 +34,26 @@ class Request:
         return self._data
 
     def _parse_qs(self):
-        qs = self._scope.get("query_string")
+        qs = self._scope.get("query_string", b"")
+        if isinstance(qs, bytes):
+            qs = qs.decode()
+        
+        parsed = parse_qs(qs, keep_blank_values=True)
         qsd = {}
-        if not qs:
-            return qsd
-        else:
-            qs = qs.decode() if isinstance(qs, bytes) else qs
-
-        query_kv_pairs = qs.split("&")
-        for kv_pair in query_kv_pairs:
-            try: key, value = kv_pair.split("=")
-            except: continue
-            current_value = qsd.get(key)
+        
+        for key, values in parsed.items():
             coercion = self.__qh.get(key)
-            if coercion:
-                try: value = coercion(value)
-                except: pass
-            if not current_value:
-                qsd[key] = value
+            processed_values = []
+            for value in values:
+                if coercion:
+                    try: value = coercion(value)
+                    except: pass
+                processed_values.append(value)
+            
+            if len(processed_values) == 1:
+                qsd[key] = processed_values[0]
             else:
-                if isinstance(current_value, list):
-                    current_value.append(value)
-                else:
-                    qsd[key] = [current_value, value]
+                qsd[key] = processed_values
         return qsd
 
     @property

@@ -59,8 +59,7 @@ and all Request objects come with the following helper properties (bag of goodie
     ...
     ```
 
-- **`req.form: Form`** -> If **content-type** of `req` is `multipart/form-data`, this will return a form object - a light
-    wrapper on a dict.
+- **`req.form: Form`** -> If **content-type** is `multipart/form-data` or `application/x-www-form-urlencoded`, this will return a `Form` object.
     ```py
     ...
 
@@ -80,6 +79,15 @@ and all Request objects come with the following helper properties (bag of goodie
         # then this will assert True
         assert req.headers.get('content-type') == 'application/json'
     ...
+    ```
+
+- **`req.host: str`** -> The `Host` header value.
+
+- **`req.ip: Lookup`** -> Client address and port information.
+    ```py
+    def handler(req, res, ctx):
+        print(req.ip.address)
+        print(req.ip.port)
     ```
 
 - **`req.method: str`** -> `GET`, `POST`, `DELETE`? What method type is the http request
@@ -156,10 +164,18 @@ and all Request objects come with the following helper properties (bag of goodie
 
 - **`req.scheme: dict`** -> `http` or `https` i.e. what protocol was sent to your server on the current request using.
 
+- **`req.route: str`** -> The raw route template that matched this request (e.g., `/customers/:id`).
+    ```py
+    def handler(req, res, ctx):
+        # Even if user visits /customers/23
+        # req.route will be /customers/:id
+        assert req.route == '/customers/:id'
+    ```
+
 - **`req.subdomain: str`** -> If request was made to a subdomain i.e. **www**`.example.org` or **api**`.example.org`
     then this holds the subdomain value e.g. `www` and `api`.
 
-- **`req.url: str`** -> The url that matched to this handler as sent by the client
+- **`req.url: str`** -> The actual url sent by the client (e.g., `/customers/23`).
     ```py 
     ...
 

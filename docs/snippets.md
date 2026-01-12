@@ -1,70 +1,69 @@
-# Minute 9: Guidelines and Code Snippets
-Heaven is extremely unopinionated. Using python [decorators](); this section
-shows a few ways to combine standard python
-libraries like [pydantic](), [PyJWT]() etc. with heaven.
+# Minute 9: Centralized Middleware & Snippets
 
+Heaven is extremely unopinionated, but it provides powerful tools for centralized control. This section shows how to use `.BEFORE` hooks for common tasks like Authentication and Data Validation.
 
-## Authentication Example
+## Centralized Authentication
 
-```py
-from functools import wraps
-from inspect import iscoroutinefunction
+Instead of littering your handlers with decorators, use `.BEFORE` to protect entire route trees at once.
 
-# typing is amazing let's use it as much as we can
-from heaven import Context, Request, Response
+```python
+from http import HTTPStatus
+from heaven import App, Request, Response, Context
 
+app = App()
 
-def protect(func):
-    @wraps(func)
-    async def delegate(req: Request, res: Response, ctx: Context):
-        token = req.headers.get('authorization')
+# 1. Define your protection logic
+async def protect(req: Request, res: Response, ctx: Context):
+    token = req.headers.get('authorization')
 
-        # use your preferred jwt or other validation lib/scheme here
-        if not token:
-            res.status = HTTPStatus.UNAUTHORIZED
-            res.body = 'Whatever body you want'
-            return
+    # Use your preferred JWT or other validation scheme here
+    if not token or token != "secret-token":
+        # res.abort stops the request cycle immediately
+        res.abort('Unauthorized Access', status=HTTPStatus.UNAUTHORIZED)
+        return
 
-        ctx.keep('user', {...})
-        if iscoroutinefunction(handler): await func(req, res, ctx)
-        else: func(req, res, ctx)
-    return delegate
+    # Keep the user in context for the actual handler
+    ctx.keep('user', {"id": 1, "name": "Raymond"})
 
+# 2. Register it globally or for specific route patterns
+app.BEFORE('/api/v1/*', protect)
 
-# use decorator to protect handler(s) of choice
-@protect
-async def get_customer_info(req: Request, res: Response, ctx: Context):
-    res.body = {}
+# 3. Your handler stays clean and focused
+async def get_secure_data(req: Request, res: Response, ctx: Context):
+    user = ctx.user # Already populated by the hook
+    res.body = {"data": "Top Secret", "for": user['name']}
+
+app.GET('/api/v1/data', get_secure_data)
 ```
 
+## Centralized Data Validation
 
-## Data Validation Example
+You can also use `.BEFORE` to validate incoming data before it ever reaches your handler.
 
-```py
-from heaven import ...  # necessary imports here
-from pydantic import BaseModel
+```python
+import json
+from heaven import App, Request, Response, Context
 
+app = App()
 
-class Guest(BaseModel):
-    email: EmailStr
-    password: str
+async def validate_json(req: Request, res: Response, ctx: Context):
+    try:
+        data = json.loads(req.body)
+        if "email" not in data:
+            raise ValueError("Email is required")
+        ctx.keep('payload', data)
+    except Exception as e:
+        res.abort(f"Invalid Data: {str(e)}", status=400)
 
+app.BEFORE('/api/v1/login', validate_json)
 
-def expects(model: BaseModel):
-    async def delegate(req: Request, res: Response, ctx: Context):
-        try:
-            data = loads(req.body)
-            guest = Guest(**data)
-        except:  # be more specific with exceptions in production code
-            res.status = HTTPStatus.BAD_REQUEST
-            return
-        ctx.keep('guest', Guest)
-    return delegate
+async def login(req: Request, res: Response, ctx: Context):
+    payload = ctx.payload
+    print(f"Logging in {payload['email']}")
+    res.body = {"status": "ok"}
 
-
-@expects(Guest)
-async def do_login_with_email(req: Request, res: Response, ctx: Context):
-    guest: Guest = ctx.guest
-    print(guest.email)
-    print(guest.password)
+app.GET('/api/v1/login', login)
 ```
+
+> [!TIP]
+> Use `.BEFORE('*', handler)` to run a hook for every single request in your application (e.g., for logging or CORS).
