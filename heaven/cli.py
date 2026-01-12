@@ -1,0 +1,127 @@
+import os
+import sys
+import importlib
+import inspect
+from typing import Optional, Any
+import uvicorn
+from rich.console import Console
+from rich.table import Table
+from rich.panel import Panel
+from rich import print as rprint
+
+from heaven import App, Router
+
+console = Console()
+
+def find_app() -> Optional[Any]:
+    """Search for an App or Router instance in common files."""
+    files_to_check = ['app.py', 'main.py', 'application.py', 'index.py']
+    
+    # Also check all .py files in current directory if common ones not found
+    all_py_files = [f for f in os.listdir('.') if f.endswith('.py') and f not in files_to_check]
+    files_to_check.extend(all_py_files)
+
+    for filename in files_to_check:
+        if not os.path.exists(filename):
+            continue
+            
+        module_name = filename[:-3]
+        try:
+            # Add current directory to path
+            sys.path.insert(0, os.getcwd())
+            module = importlib.import_module(module_name)
+            
+            # Look for App or Router instances
+            for name, obj in inspect.getmembers(module):
+                if isinstance(obj, (App, Router)):
+                    return f"{module_name}:{name}"
+        except Exception:
+            continue
+            
+    return None
+
+def fly(port: int = 8000, host: str = "127.0.0.1", reload: bool = True):
+    """The zero-config 'fly' command."""
+    app_path = find_app()
+    
+    if not app_path:
+        console.print("[bold red]Error:[/bold red] Could not find a Heaven App or Router instance in the current directory.")
+        console.print("Try creating an [bold cyan]app.py[/bold cyan] with [bold green]app = App()[/bold green].")
+        sys.exit(1)
+
+    console.print(Panel(
+        f"[bold yellow]Heaven is taking flight![/bold yellow]\n\n"
+        f"🚀 [bold white]Source:[/bold white] {app_path}\n"
+        f"📡 [bold white]Address:[/bold white] http://{host}:{port}\n"
+        f"♻️ [bold white]Reload:[/bold white] {'Enabled' if reload else 'Disabled'}",
+        title="[bold cyan]Heaven CLI[/bold cyan]",
+        expand=False
+    ))
+
+    uvicorn.run(app_path, host=host, port=port, reload=reload, factory=False)
+
+def routes(app_path: Optional[str] = None):
+    """Visualize all registered routes."""
+    if not app_path:
+        app_path = find_app()
+        
+    if not app_path:
+        console.print("[bold red]Error:[/bold red] Could not find an app to inspect.")
+        sys.exit(1)
+
+    try:
+        module_name, obj_name = app_path.split(':')
+        module = importlib.import_module(module_name)
+        app = getattr(module, obj_name)
+    except Exception as e:
+        console.print(f"[bold red]Error loading app:[/bold red] {e}")
+        sys.exit(1)
+
+    table = Table(title="[bold cyan]Heaven API Routes[/bold cyan]")
+    table.add_column("Method", style="bold magenta")
+    table.add_column("Path", style="bold white")
+    table.add_column("Subdomain", style="dim")
+    table.add_column("Protection", style="green")
+
+    # Access internal routes
+    for subdomain, routes_obj in app.subdomains.items():
+        # Iterate over all methods in cache
+        for method, paths in routes_obj.cache.items():
+            for path, handler in paths.items():
+                handler_name = ""
+                if hasattr(handler, '__name__'):
+                    handler_name = f" ({handler.__name__})"
+                elif isinstance(handler, str):
+                    handler_name = f" ({handler})"
+                
+                table.add_row(
+                    method, 
+                    path + handler_name, 
+                    subdomain, 
+                    "Enabled" if app._protect_output else "Disabled"
+                )
+
+    console.print(table)
+
+def main():
+    args = sys.argv[1:]
+    
+    if not args or args[0] == "fly":
+        fly()
+    elif args[0] == "run":
+        if len(args) < 2:
+            console.print("[bold red]Error:[/bold red] Please specify an app path (e.g., [bold cyan]heaven run app:router[/bold cyan])")
+            sys.exit(1)
+        # Simple run wrapper
+        app_path = args[1]
+        uvicorn.run(app_path, host="127.0.0.1", port=8000, reload=True)
+    elif args[0] == "routes":
+        routes()
+    else:
+        console.print(f"[bold yellow]Usage:[/bold yellow]")
+        console.print("  [bold cyan]heaven fly[/bold cyan]          - Zero-config auto-discovery run")
+        console.print("  [bold cyan]heaven run <app>[/bold cyan]    - Run a specific app")
+        console.print("  [bold cyan]heaven routes[/bold cyan]       - Show all registered routes")
+
+if __name__ == "__main__":
+    main()
