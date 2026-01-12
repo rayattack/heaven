@@ -23,9 +23,14 @@ class Request:
         self._subdomain, self._headers = metadata
         self._params = None
         self._queries = None
+        self._data = None
         self._dirty = False
         self._queried = False
         self._mounted_from_application = None
+
+    @property
+    def data(self):
+        return self._data
 
     def _parse_qs(self):
         qs = self._scope.get("query_string")
@@ -79,8 +84,9 @@ class Request:
 
     @property
     def form(self) -> "Form":
-        if not "multipart/form-data" in self.headers.get("content-type"):
-            return None  # currently none
+        content_type = self.headers.get("content-type", "")
+        if not ("multipart/form-data" in content_type or "application/x-www-form-urlencoded" in content_type):
+            return None
         if self._form is None:
             form = Form(self)
             self._form = form

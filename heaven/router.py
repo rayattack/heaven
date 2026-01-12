@@ -7,6 +7,9 @@ from inspect import iscoroutinefunction
 from os import path, getcwd
 from typing import Any, Callable, Tuple
 
+import json
+import mimetypes
+import msgspec
 from aiofiles import open as async_open_file
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from uvicorn import run
@@ -82,10 +85,9 @@ def _notify(width=80, event=STARTUP): #pragma: nocover
 
 
 def _set_content_type(req: Request, res: Response):
-    ct = 'Content-Type'
-    if(req.url.endswith('.css')): res.headers = ct, 'text/css'
-    elif(req.url.endswith('.svg')): res.headers = ct, 'image/svg+xml'
-    elif(req.url.endswith('.js')): res.headers = ct, 'text/javascript'
+    mime_type, _ = mimetypes.guess_type(req.url)
+    if mime_type:
+        res.headers = 'Content-Type', mime_type
 
 
 def _string_to_function_handler(handler: str):
@@ -384,14 +386,32 @@ class Routes(object):
         for enumeration.
         Enumeration helps us gradually use the current enumeration position/offset/index to
         gradually append '*' until we get a match.
-        We stop at a level before matched/masked url as we already searched for verbatim match
-        hence no index + 1 used
         """
 
         for hook in hooks:
             if w._abort: raise AbortException
             if iscoroutinefunction(hook): await hook(r, w, c)
             else: hook(r, w, c)
+
+
+class SchemaRegistry:
+    def __init__(self, router: 'Router'):
+        self._router = router
+        self._schemas = {}
+
+    def add(self, method: str, route: str, expects=None, returns=None, summary=None, description=None):
+        self._schemas[(method.upper(), route)] = {
+            'expects': expects,
+            'returns': returns,
+            'summary': summary,
+            'description': description
+        }
+
+    def POST(self, route: str, **kwargs): self.add('POST', route, **kwargs)
+    def GET(self, route: str, **kwargs): self.add('GET', route, **kwargs)
+    def PUT(self, route: str, **kwargs): self.add('PUT', route, **kwargs)
+    def DELETE(self, route: str, **kwargs): self.add('DELETE', route, **kwargs)
+    def PATCH(self, route: str, **kwargs): self.add('PATCH', route, **kwargs)
 
 
 class Router(object):
@@ -407,10 +427,29 @@ class Router(object):
         self._templater = None
         self._loader = None
         self.__daemons = []
+        self.schema = SchemaRegistry(self)
+        self._docs_config = None
+        self._baked = False
 
     @property
     def _(self):
         return Look(self._buckets)
+
+    def _bake_schemas(self):
+        if self._baked: return
+        for (method, route), meta in self.schema._schemas.items():
+            expects = meta.get('expects')
+            if expects and hasattr(expects, '__struct_fields__'):
+                decoder = msgspec.json.Decoder(expects)
+                async def validate_hook(req, res, ctx, dec=decoder):
+                    try:
+                        req._data = dec.decode(req.body)
+                    except msgspec.ValidationError as e:
+                        res.status = 422
+                        res.body = str(e).encode()
+                        res.abort(res.body)
+                self.BEFORE(route, validate_hook)
+        self._baked = True
 
     async def __call__(self, scope, receive, send):
         if scope['type'] == 'lifespan':
@@ -433,10 +472,17 @@ class Router(object):
         if not engine:
             engine = wildcard_engine if wildcard_engine else self.subdomains.get(DEFAULT)
 
+        if not self._baked: self._bake_schemas()
+
         response = await engine.handle(scope, receive, send, metadata, self)
         if scope['type'] == 'http':
             await send({'type': 'http.response.start', 'headers': response.headers, 'status': response.status})
-            await send({'type': 'http.response.body', 'body': response.body, **response.metadata})
+            if hasattr(response.body, '__aiter__'):
+                async for chunk in response.body:
+                    await send({'type': 'http.response.body', 'body': chunk, 'more_body': True})
+                await send({'type': 'http.response.body', 'body': b'', 'more_body': False})
+            else:
+                await send({'type': 'http.response.body', 'body': response.body, **response.metadata})
         else:
             await send({'type': 'websocket.http.response.start', 'headers': response.headers, 'status': response.status})
 
@@ -655,13 +701,7 @@ class Router(object):
             static_asset = f"{req.params.get('*', '')}"
             location = path.join(assets_folder_path, f'{folder}')
             target_resource_path = path.join(location, static_asset)
-            try:
-                async with async_open_file(target_resource_path, 'rb') as opened_asset_file:
-                    _set_content_type(req, res)
-                    res.body = b''.join(await opened_asset_file.readlines())
-            except Exception as exc:
-                print(exc)
-                res.status = HTTPStatus.NOT_FOUND
+            res.file(target_resource_path)
         self.GET(route, serve_assets, subdomain)
 
     def SOCKET(self, route: str, handler: Handler, subdomain=DEFAULT):
@@ -672,6 +712,85 @@ class Router(object):
 
     def WS(self, route: str, handler: Handler, subdomain=DEFAULT):
         self.abettor(METHOD_WEBSOCKET, route, handler, subdomain)
+
+    def openapi(self):
+        """Generate OpenAPI JSON specification"""
+        paths = {}
+        components = {"schemas": {}}
+        
+        for (method, route), meta in self.schema._schemas.items():
+            path_item = paths.setdefault(route, {})
+            op = {
+                "summary": meta.get("summary") or "",
+                "description": meta.get("description") or "",
+                "responses": {"200": {"description": "Successful Response"}}
+            }
+            
+            expects = meta.get("expects")
+            if expects:
+                schema = msgspec.json.schema(expects)
+                schema_name = getattr(expects, "__name__", "Model")
+                components["schemas"][schema_name] = schema
+                op["requestBody"] = {
+                    "content": {
+                        "application/json": {
+                            "schema": {"$ref": f"#/components/schemas/{schema_name}"}
+                        }
+                    }
+                }
+            
+            returns = meta.get("returns")
+            if returns:
+                schema = msgspec.json.schema(returns)
+                schema_name = getattr(returns, "__name__", "Model")
+                if schema_name not in components["schemas"]:
+                    components["schemas"][schema_name] = schema
+                op["responses"]["200"] = {
+                    "description": "Successful Response",
+                    "content": {
+                        "application/json": {
+                            "schema": {"$ref": f"#/components/schemas/{schema_name}"}
+                        }
+                    }
+                }
+            
+            path_item[method.lower()] = op
+            
+        return {
+            "openapi": "3.1.0",
+            "info": {
+                "title": self._docs_config.get("title", "API Reference") if self._docs_config else "API Reference",
+                "version": self._docs_config.get("version", "0.0.1") if self._docs_config else "0.0.1"
+            },
+            "paths": paths,
+            "components": components
+        }
+
+    def DOCS(self, route: str, title="API Reference", version="0.0.1"):
+        self._docs_config = {"title": title, "version": version}
+        
+        async def openapi_handler(req, res, ctx):
+            res.headers = "Content-Type", "application/json"
+            res.body = json.dumps(self.openapi())
+
+        json_path = f"{route.rstrip('/')}/openapi.json"
+        self.GET(json_path, openapi_handler)
+
+        async def docs_handler(req, res, ctx):
+            res.headers = "Content-Type", "text/html"
+            res.body = f"""<!doctype html>
+<html>
+  <head>
+    <title>{title}</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+  </head>
+  <body>
+    <script id="api-reference" data-url="{json_path}"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
+  </body>
+</html>"""
+        self.GET(route, docs_handler)
 
 
 class Application(Router):...

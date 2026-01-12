@@ -62,9 +62,20 @@ router = Router()
 router.ON(STARTUP, 'middlewares.connections.updatabase')
 
 
-# note that you did not need to import your request handler, just giving heaven
 # the path to your handler as a string is enough
 router.GET('/v1/patients/:id', 'controllers.patients.records.get_record_by_id')
+
+
+# NEW: Schema Validation & Automatic OpenAPI Docs
+from msgspec import Struct
+
+class Patient(Struct):
+    name: str
+    age: int
+
+# Register schema and generate Scalar docs
+router.schema.POST('/v1/patients', expects=Patient, summary="Create Patient")
+router.DOCS('/docs')
 ```
 <hr/>
 
