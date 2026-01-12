@@ -115,9 +115,10 @@ def routes(app_path: Optional[str] = None):
                     subdomain, 
                     "Enabled" if app._protect_output else "Disabled"
                 )
-
-    console.print(table)
-
+ 
+    with console.pager(styles=True):
+        console.print(table)
+ 
 def handlers(target_path: Optional[str] = None):
     """Deep inspection of handlers, showing source code if a path is provided."""
     app_path = find_app()
@@ -149,12 +150,13 @@ def handlers(target_path: Optional[str] = None):
                             line = inspect.getsourcelines(original_handler)[1]
                             
                             syntax = Syntax(source, "python", theme="monokai", line_numbers=True, start_line=line)
-                            console.print(Panel(
-                                syntax,
-                                title=f"[bold green]{method} {path}[/bold green]",
-                                subtitle=f"[dim]{file}:{line}[/dim]",
-                                expand=False
-                            ))
+                            with console.pager(styles=True):
+                                console.print(Panel(
+                                    syntax,
+                                    title=f"[bold green]{method} {path}[/bold green]",
+                                    subtitle=f"[dim]{file}:{line}[/dim]",
+                                    expand=False
+                                ))
                         except Exception as e:
                              console.print(f"[bold yellow]Handler found but source unavailable:[/bold yellow] {handler}")
                              console.print(f"[dim]Reason: {e}[/dim]")
@@ -184,7 +186,8 @@ def handlers(target_path: Optional[str] = None):
                     
                     table.add_row(method, path, name, loc)
         
-        console.print(table)
+        with console.pager(styles=True):
+            console.print(table)
 
 def schema(output: str = "swagger.json"):
     """Export OpenAPI specification to a JSON file."""
