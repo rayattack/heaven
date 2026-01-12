@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "heaven"
-version = "0.6.0"
+version = "0.6.1"
 description = "Extremely Stupid Simple, Blazing Fast, Get Out of your way immediately Microframework for building Python Web Applications."
 authors = ["Raymond Ortserga <ortserga@gmail.com>"]
 license = "MIT"
@@ -15,7 +15,7 @@ msgspec = ">=0.18.0"
 websockets = ">=12.0"
 rich = ">=13.0.0"
 
-[tool.poetry.dev-dependencies]
+[tool.poetry.group.dev.dependencies]
 
 
 [tool.poetry.scripts]
