@@ -129,9 +129,11 @@ def handlers(target_path: Optional[str] = None):
                     if path == target_path:
                         found = True
                         try:
-                            source = inspect.getsource(handler)
-                            file = inspect.getsourcefile(handler)
-                            line = inspect.getsourcelines(handler)[1]
+                            # Follow the breadcrumbs if the function is decorated with @wraps
+                            original_handler = inspect.unwrap(handler)
+                            source = inspect.getsource(original_handler)
+                            file = inspect.getsourcefile(original_handler)
+                            line = inspect.getsourcelines(original_handler)[1]
                             
                             syntax = Syntax(source, "python", theme="monokai", line_numbers=True, start_line=line)
                             console.print(Panel(
@@ -157,13 +159,16 @@ def handlers(target_path: Optional[str] = None):
             for method, paths in routes_obj.cache.items():
                 for path, handler in paths.items():
                     try:
-                        file = os.path.relpath(inspect.getsourcefile(handler))
-                        line = inspect.getsourcelines(handler)[1]
+                        # Follow breadcrumbs if the function is @wrapped
+                        original = inspect.unwrap(handler)
+                        file = os.path.relpath(inspect.getsourcefile(original))
+                        line = inspect.getsourcelines(original)[1]
                         loc = f"{file}:{line}"
+                        name = getattr(original, '__name__', str(original))
                     except:
                         loc = "unknown"
+                        name = getattr(handler, '__name__', str(handler))
                     
-                    name = getattr(handler, '__name__', str(handler))
                     table.add_row(method, path, name, loc)
         
         console.print(table)
