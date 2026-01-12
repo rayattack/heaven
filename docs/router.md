@@ -65,7 +65,147 @@ router.AFTER('/orders/*', handler)
     work in similar fashion. The `subdomain` optional argument limits the matching to a subdomain.
 
 - **`router.HTTP(url: str, handler: func)`** -> Registers your custom handlers/functions to all HTTP methods i.e. GET, PUT, POST, PUT, PATCH instead of doing it individually.
+- **`router.schema`** -> A registry for attaching metadata (OpenAPI schemas) to routes. It supports `GET`, `POST`, `PUT`, `DELETE`, and `PATCH` methods.
+    ```py
+    from msgspec import Struct
 
+    class User(Struct):
+        id: int
+        name: str
+
+    # Sidecar registration of metadata
+    app.schema.POST('/users', expects=User, returns=User, summary="Create User")
+    ```
+
+    > [!TIP]
+    > Heaven's `Schema` is a direct export of the high-performance `msgspec.Struct`. To learn more about advanced features like default values, tagging, and validation, visit the [msgspec documentation](https://jcristharif.com/msgspec/structs.html).
+
+    #### Advanced Schema Options
+    You can control how Heaven handles incoming and outgoing data using these optional flags in `.schema` methods:
+
+    - **`protect: bool`**: When `True` (default), Heaven will automatically "protect" your response data by removing any fields not present in the `returns` schema. This is perfect for leak-proofing APIs.
+    - **`partial: bool`**: When `True`, Heaven allows "subset matching." If your response is missing some fields from the schema, it will still pass (default: `False`).
+    - **`strict: bool`**: When `True` (default), output validation failures (missing required fields) will result in a `500 Internal Server Error`. If `False`, it will only log a warning and return the data as-is.
+
+    ```python
+    # Example: Return only what's in User schema, even if DB returns more.
+    # Allow missing fields (partial) and just warn on mismatch (strict=False).
+    app.schema.GET('/users/:id', returns=User, protect=True, partial=True, strict=False)
+    ```
+
+    You can also set these globally when initializing your app:
+    ```python
+    app = App(protect_output=True, allow_partials=False, fail_on_output=True)
+    ```
+
+- **`router.DOCS(route: str, title: str = "API Reference", version: str = "0.0.1")`** -> Automatically generates a dynamic `openapi.json` and serves an interactive **Scalar** API reference at the provided route.
+    ```py
+    app.DOCS('/api/docs', title="My Insanely Fast API")
+    ```
+
+- **`router.earth`** -> The built-in testing utility. It provides a clean API for both integration and unit testing.
+
+    #### Integration Testing
+    Simulate full requests through the entire framework stack (Hooks, Matching, Handlers, Protection).
+    ```py
+    # Returns the actual (req, res, ctx) trio used during the lifecycle
+    req, res, ctx = await app.earth.POST('/users', body={"name": "Ray"})
+
+    assert res.status == 201
+    assert res.json['name'] == "Ray"
+    ```
+
+    #### Unit Testing Handlers
+    Use atomic factories to construct a "trio" for testing handlers in isolation.
+    ```py
+    from my_handlers import create_user
+
+    req = app.earth.req(url='/users', body={"name": "Jane"})
+    res = app.earth.res()
+    ctx = app.earth.ctx()
+
+    await create_user(req, res, ctx)
+    assert res.status == 201
+    ```
+
+    #### Lifecycle & Session Tracking
+    Use the `test()` context manager to run `STARTUP`/`SHUTDOWN` hooks and track cookies across requests.
+    ```py
+    async with app.earth.test() as earth:
+        # Startup hooks (e.g., DB connections) have run here
+        await earth.POST('/login', body={"user": "admin"}) # Sets a cookie
+        req, res, ctx = await earth.GET('/dashboard')    # Cookie tracked automatically
+        assert res.status == 200
+    ```
+
+    #### Subdomain Testing
+    Heaven is built for subdomains. You can specify which subdomain to target in your tests.
+    ```py
+    # Defaults to 'www'
+    req, res, ctx = await app.earth.GET('/api-info', subdomain='api')
+    assert res.status == 200
+    ```
+
+    #### Middleware Bypass
+    Sometimes you want to test a route but skip a heavy or blocking middleware (like a complex Auth check).
+    ```py
+    app.earth.bypass(heavy_middleware)
+    
+    async with app.earth.test() as earth:
+        # heavy_middleware will be skipped for all requests in this block
+        await earth.GET('/fast-route')
+    ```
+
+    #### File Uploads
+    Testing multipart/form-data is easy with the `upload` helper.
+    ```py
+    files = {'image': b'binary_data_here'}
+    req, res, ctx = await app.earth.upload('/save-avatar', files=files, data={'id': '123'})
+    assert res.status == 200
+    ```
+
+    #### WebSocket Testing
+    Simulate real-time interactions without a real server.
+    ```py
+    # 1. Connect
+    ws = await app.earth.SOCKET('/chat').connect()
+    
+    # 2. Communicate
+    await ws.send("Hello Heaven!")
+    response = await ws.receive()
+    
+    # 3. Cleanup
+    await ws.close()
+    ```
+
+    #### Mocking Infrastructure
+    Heaven provides two powerful ways to "unplug" real services (like databases) during tests.
+
+    **Strategy 1: Hook Swapping**
+    If you use `app.ON(STARTUP, ...)` to connect to a database, you can swap it for a test version before running your tests.
+    ```py
+    async def use_test_db(app):
+        # Connect to a local SQLite instead of Production PG
+        app.keep('db', TestDB())
+
+    async def test_my_app():
+        app.earth.swap(connect_to_real_db, use_test_db)
+        async with app.earth.test() as earth:
+            # STARTUP now runs use_test_db instead
+            await earth.GET('/data')
+    ```
+
+    **Strategy 2: Bucket Overwriting**
+    Since Heaven handlers rely on "Buckets" via `app.peek`, you can simply overwrite the bucket inside your test block.
+    ```py
+    async def test_simple_mock():
+        async with app.earth.test() as earth:
+            # Overwrite the 'db' bucket with a mock
+            app.keep('db', MockDB())
+            
+            await earth.GET('/data')
+            # The handler calling app.peek('db') will get the mock!
+    ```
 
 ## Heaven is a Global Config & Store
 
@@ -123,6 +263,38 @@ app.ONCE(upredis)
 
 app.POST('/orders', create_order)
 ```
+
+-----------------------
+
+-----------------------
+
+## Daemons: Native Background Tasks 👻
+
+Daemons are one of Heaven's most powerful features. They are long-running background tasks that live for the entire lifecycle of your application.
+
+Unlike FastAPI or Flask, which often require external libraries like Celery or Dramatiq for background processing, Heaven has background workers built directly into the core.
+
+### Why Daemons are powerful:
+1. **Periodic Jobs**: Easily run a task every `X` seconds (like a heartbeat or cache warmer).
+2. **Event Loops**: Listen to a message queue or a database stream in the background.
+3. **Internal Tools**: Run health checks or cleanup scripts without affecting request latency.
+
+### Creating a Daemon
+
+A daemon is just a function that takes the `app` instance as its only argument.
+
+```python
+async def my_daemon(app):
+    print("Doing background work...")
+    
+    # If you return a number, the daemon will sleep for that many 
+    # seconds and then run again automatically.
+    return 10 
+
+app.daemons = my_daemon
+```
+
+If you return `None` or `False`, the daemon will run exactly once and then stop.
 
 -----------------------
 

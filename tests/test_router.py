@@ -81,7 +81,7 @@ class AsyncRouterTest(IsolatedAsyncioTestCase):
         with self.assertRaises(AttributeError):
             # template needs to be activated before use
             response = await engine.handle(self.scope, receiver, None, metadata)
-        router.TEMPLATES('docs', asynchronous=False)
+        router.TEMPLATES('tests/templates', asynchronous=False)
         response = await engine.handle(self.scope, receiver, None, metadata, router)
         self.assertIsInstance(response, Response)
         self.assertEqual(len(response.headers), 1)
@@ -96,7 +96,7 @@ class AsyncRouterTest(IsolatedAsyncioTestCase):
         engine = router.subdomains.get(DEFAULT)
         async def async_receiver(req, res, ctx):
             await res.render('index.html')
-        router.TEMPLATES('docs', asynchronous=True)
+        router.TEMPLATES('tests/templates', asynchronous=True)
         router.GET('/v2/customers', async_receiver)
         response = await engine.handle({**MOCK_SCOPE, 'path': '/v2/customers'}, receiver, None, metadata, router)
         self.assertIsInstance(response, Response)

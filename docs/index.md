@@ -1,77 +1,52 @@
-## Welcome To Heaven
-You are probably here because you want to build a web application using Python. Well, Welcome to heaven - the super
-simple, extremely fast, web framework for purists.
+# Welcome to Heaven ⚡
 
-Building a web application with heaven is stupid simple as the code snippet below shows
+You are here because you want to build Python web applications without the boilerplate, the bloat, or the confusion.
 
+**Heaven** is the super-simple, extremely fast, web framework for purists. It doesn't use "magic" decorators to hide how things work. It gives you raw ASGI speed with a developer experience that allows for **complete mastery in 10 minutes or less.**
 
-```py
-from heaven import Router  # also available as App, Application
+---
 
-# create your web app i.e. a simple router/multiplexer
-app = Router()
+## Why Heaven?
 
-app.ASSETS('assets_folder_path')
-app.TEMPLATES('templates_folder_path')
+If you are tired of:
+- **FastAPI's** complex dependency injection and verbose schemas.
+- **Flask's** aging internal architecture and global variables.
+- **Django's** massive boilerplate and rigid structure.
 
-# for async support use an async func/method not a lambda
-app.GET('/', lambda req, res, ctx: res.renders('index.html'))
-```
+...then you belong in **Heaven**.
 
---------------------
+---
 
-And to run your new app from heaven?
+## Your 10-Minute Journey to Mastery
+
+We believe you should be able to read the source code of your framework. Heaven is small enough that you *can*.
+
+- **Minute 1**: [Quickstart](quickstart.md) - From Zero to Hello World.
+- **Minute 2**: [The Request](request.md) - Understanding the incoming data.
+- **Minute 3**: [The Response](response.md) - Sending data back to the world.
+- **Minute 4**: [The Context](context.md) - Managing state across your app.
+- **Minute 5**: [The Router & Daemons](router.md) - Routing, Hooks, and Background Jobs.
+- **Minute 6**: [HTML & Assets](html.md) - Serving templates and static files.
+- **Minute 7**: [Drinking Coffee](coffee.md) - You're almost a master.
+- **Minute 8**: [Application Mounting](mount.md) - Building modular, large-scale apps.
+- **Minute 9**: [Auth & Validation](snippets.md) - Protecting your endpoints with `.BEFORE`.
+- **Minute 10**: [The Finish Line](congrats.md) - You are now a Heaven Master.
+
+---
+
+## Get Started Now
 
 ```sh
-$ uvicorn app:app --port 5000 --reload
+$ pip install heaven
 ```
-&nbsp;
 
-## Heaven's Goals vs Building Useful Apps
-Heaven was designed with 3 goals in mind. The example above creates a simple heaven app but it does not do anything useful.
+```python
+from heaven import App
 
-But, what do we mean when we say an app is useful, and how does it relate to Heaven's Goals?
+app = App()
 
-In our opinion a **useful app(s)**:
+app.GET('/', lambda req, res, ctx: res.renders('index.html'))
 
-1. Solves a problem
-2. Is extremely simple to learn (Mastery in 10mins or less)
-3. Is optimized for speed
-
-These are also Heaven's goals.
-
-- Heaven solves the framework mastery problem - Enabling engineers build APIs and Web Applications that also embody Heaven's goals.
-
-- Is super simple to learn - in line with it's goal of `Mastery in 10 mins or less`. If you find a  python web framework easier to learn than Heaven, use it.
-
-- Faster than Django, Flask, Pyramid etc. and will get even faster as it is optimized further.
-
-
-## Why Another Python Web Framework?
-Because we needed something small enough to be learnt completely by new engineers in less than 10
-minutes. Complete mastery with no grey spots.
-
-
------------------------------------------------
-
-## Okay, What Next?
-
-- Minute 1: [Quickstart](quickstart.md) : Toe in the water
-
-- Minute 2: [Request to Heaven](request.md)
-
-- Minute 3: [Response from Heaven](response.md)
-
-- Minute 4: [Context of Heaven](context.md)
-
-- Minute 5: [Heaven Application](router.md)
-
-- Minute 6: [Rendering HTML Templates &amp; Public Assets](html.md)
-
-- Minute 7: [Drink some coffee](coffee.md)
-
-- Minute 8: [Mounting Applications](mount.md)
-
-- Minute 9: [Authentication &amp; Data Validation Guidelines/Code Snippets](snippets.md)
-
-- Minute 10: [Congratulate Yourself](congrats.md)
+# Run with any ASGI server
+# $ uvicorn app:app --port 5000 --reload
+```

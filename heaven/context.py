@@ -9,7 +9,13 @@ class Context():
     def keep(self, key, value):
         self._data[key] = value
 
-    def __getattr__(self, key):
+    def peek(self, key):
+        return self._data.get(key)
+
+    def unkeep(self, key):
+        return self._data.pop(key, None)
+
+    def __getattr__(self, key) -> Any:
         return self._data.get(key)
 
 
@@ -17,7 +23,7 @@ class Look(object):
     def __init__(self, data: dict):
         self._data = data
 
-    def __getattr__(self, key: str):
+    def __getattr__(self, key: str) -> Any:
         value = self._data.get(key)
         if isinstance(value, dict):
             return Look(value)

@@ -5,13 +5,14 @@ from http import HTTPStatus
 from importlib import import_module
 from inspect import iscoroutinefunction
 from os import path, getcwd
-from typing import Any, Callable, Tuple
+from typing import Any, Callable, Tuple, Union
 
+import json
+import mimetypes
+import msgspec
 from aiofiles import open as async_open_file
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from uvicorn import run
-
-from typing import Callable, Union
 
 from .constants import (
     CONNECT,
@@ -34,21 +35,20 @@ from .constants import (
     POST,
     PUT,
     SHUTDOWN,
+    SOCKET,
     STARTUP,
+    STATUS_NOT_FOUND as NOT_FOUND,
     TRACE,
     URL_ERROR_MESSAGE,
     WILDCARD
 )
-
-from .errors import AbortException, SubdomainError, UrlDuplicateError, UrlError
 from .utils import preprocessor
 from .request import Request
 from .response import Response
 from .context import Context, Look
-
+from .errors import AbortException, SubdomainError, UrlDuplicateError, UrlError
 
 methods = ['get', 'post', 'put', 'delete', 'connect', 'head', 'options', 'patch']
-
 
 Handler = Union[Callable[[Request, Response, Context], object], str]
 
@@ -82,10 +82,9 @@ def _notify(width=80, event=STARTUP): #pragma: nocover
 
 
 def _set_content_type(req: Request, res: Response):
-    ct = 'Content-Type'
-    if(req.url.endswith('.css')): res.headers = ct, 'text/css'
-    elif(req.url.endswith('.svg')): res.headers = ct, 'image/svg+xml'
-    elif(req.url.endswith('.js')): res.headers = ct, 'text/javascript'
+    mime_type, _ = mimetypes.guess_type(req.url)
+    if mime_type:
+        res.headers = 'Content-Type', mime_type
 
 
 def _string_to_function_handler(handler: str):
@@ -121,7 +120,6 @@ class Parameter(object):
 class Route(object):
     def __init__(self, route: str, handler: Callable, router: 'Router') -> None:
         self.heaven_instance = router
-        self.parameters: list[Parameter] = []  # we use this to save parameters
         self.parameterized = {}
         self.queryhint = None
         self.route = route
@@ -132,6 +130,7 @@ class Route(object):
         matched: str = ''
         node: Route = self
         route_at_deviation = '/'.join(routes)
+        parameters = []
 
         # grand father deviation point in case we are dealing from the start with a catch all route
         deviation_point: Route = node.children.get('*')
@@ -144,7 +143,7 @@ class Route(object):
                 current_node = node.children.get(':')
                 if current_node:
                     # we are going to use this later when we know the address that has been matched
-                    self.parameters.append(Parameter(value = route, potentials = current_node.parameterized))
+                    parameters.append(Parameter(value = route, potentials = current_node.parameterized))
 
                     if(node.children.get('*')):
                         """If there was also a wildcard seeing as placeholder ':' takes precedence, then
@@ -183,7 +182,7 @@ class Route(object):
 
 
         # time to process what parameters we saw
-        for parameter in self.parameters:
+        for parameter in parameters:
             r.params = parameter.resolve(node.route)
         # default node.route is None and handler as well
         # so this returns None if no route encountered or what was encountered in while block above
@@ -200,7 +199,7 @@ class Routes(object):
         self.afters = {}
         self.befores = {}
 
-        self.cache = {CONNECT: {}, DELETE: {}, GET: {}, HEAD: {}, OPTIONS: {}, PATCH: {}, POST: {}, PUT: {}, TRACE: {}}
+        self.cache = {CONNECT: {}, DELETE: {}, GET: {}, HEAD: {}, OPTIONS: {}, PATCH: {}, POST: {}, PUT: {}, TRACE: {}, SOCKET: {}}
         self.routes = {}
 
     def add(self, method: str, route: str, handler: Callable, router: 'Router'):
@@ -291,18 +290,21 @@ class Routes(object):
         """
         Traverse internal route tree and use appropriate method
         """
+        method = scope.get('method')
+        if scope['type'] == 'websocket': method = SOCKET
+
         body = b''
-        more = True
-        while more:
-            msg = await receive()
-            body += msg.get('body', b'')
-            more = msg.get('more_body', False)
+        if scope['type'] == 'http':
+            more = True
+            while more:
+                msg = await receive()
+                body += msg.get('body', b'')
+                more = msg.get('more_body', False)
 
         r = Request(scope, body, receive, metadata, application)
         c = Context(application)
         w = Response(context=c, app=application, request=r)
 
-        method = scope.get('method')
         matched = None
         handler = None
 
@@ -338,8 +340,23 @@ class Routes(object):
             try: handler.__requesthandler__
             except: pass
             else: handler = handler.__call__
-            if iscoroutinefunction(handler): await handler(r, w, c)
-            else: handler(r, w, c)
+            if method == SOCKET:
+                await send({'type': 'websocket.accept'})
+                async def sender(data):
+                    msg = {'type': 'websocket.send'}
+                    if isinstance(data, str): msg['text'] = data
+                    else: msg['bytes'] = data
+                    await send(msg)
+                
+                async def receiver():
+                    msg = await receive()
+                    return msg.get('text') or msg.get('bytes')
+
+                if iscoroutinefunction(handler): await handler(sender, receiver, r, c)
+                else: handler(sender, receiver, r, c)
+            else:
+                if iscoroutinefunction(handler): await handler(r, w, c)
+                else: handler(r, w, c)
 
             # call all post handle request hooks
             await self.xhooks(self.afters, matched, r, w, c)
@@ -384,18 +401,50 @@ class Routes(object):
         for enumeration.
         Enumeration helps us gradually use the current enumeration position/offset/index to
         gradually append '*' until we get a match.
-        We stop at a level before matched/masked url as we already searched for verbatim match
-        hence no index + 1 used
         """
 
         for hook in hooks:
             if w._abort: raise AbortException
+            
+            # Check for Earth bypasses
+            application = r._application
+            if application and hasattr(application, 'earth'):
+                if hook in application.earth._bypasses:
+                    continue
+                # Also check unwrapped original if it exists
+                original = getattr(hook, '__wrapped__', hook)
+                if original in application.earth._bypasses:
+                    continue
+
             if iscoroutinefunction(hook): await hook(r, w, c)
             else: hook(r, w, c)
 
 
+class SchemaRegistry:
+    def __init__(self, router: 'Router'):
+        self._router = router
+        self._schemas = {}
+
+    def add(self, method: str, route: str, expects=None, returns=None, summary=None, description=None, protect=None, partial=None, strict=None):
+        self._schemas[(method.upper(), route)] = {
+            'expects': expects,
+            'returns': returns,
+            'summary': summary,
+            'description': description,
+            'protect': protect,
+            'partial': partial,
+            'strict': strict
+        }
+
+    def POST(self, route: str, **kwargs): self.add('POST', route, **kwargs)
+    def GET(self, route: str, **kwargs): self.add('GET', route, **kwargs)
+    def PUT(self, route: str, **kwargs): self.add('PUT', route, **kwargs)
+    def DELETE(self, route: str, **kwargs): self.add('DELETE', route, **kwargs)
+    def PATCH(self, route: str, **kwargs): self.add('PATCH', route, **kwargs)
+
+
 class Router(object):
-    def __init__(self, configurator=None):
+    def __init__(self, configurator=None, protect_output=True, allow_partials=False, fail_on_output=True):
         self.__ws = None
         self.finalized = False
         self.initializers = deque()
@@ -407,10 +456,84 @@ class Router(object):
         self._templater = None
         self._loader = None
         self.__daemons = []
+        self.schema = SchemaRegistry(self)
+        self._docs_config = None
+        self._baked = False
+        self._protect_output = protect_output
+        self._allow_partials = allow_partials
+        self._fail_on_output = fail_on_output
 
     @property
     def _(self):
         return Look(self._buckets)
+
+    @property
+    def earth(self):
+        if not hasattr(self, '_earth'):
+            from .earth import Earth
+            self._earth = Earth(self)
+        return self._earth
+
+    def _bake_schemas(self):
+        if self._baked: return
+        for (method, route), meta in self.schema._schemas.items():
+            expects = meta.get('expects')
+            if expects and hasattr(expects, '__struct_fields__'):
+                decoder = msgspec.json.Decoder(expects)
+                async def validate_hook(req, res, ctx, dec=decoder):
+                    try:
+                        req._data = dec.decode(req.body)
+                    except msgspec.ValidationError as e:
+                        res.status = 422
+                        res.body = str(e).encode()
+                        res.abort(res.body)
+                self.BEFORE(route, validate_hook)
+            
+            returns = meta.get('returns')
+            if returns:
+                protect = meta.get('protect')
+                if protect is None: protect = self._protect_output
+                
+                partial = meta.get('partial')
+                if partial is None: partial = self._allow_partials
+                
+                strict = meta.get('strict')
+                if strict is None: strict = self._fail_on_output
+                
+                async def output_hook(req, res, ctx, schema=returns, protect=protect, partial=partial, strict=strict):
+                    if res.body is None or res._abort: return
+                    # Skip if body is already bytes/generator (user manually handled it)
+                    if isinstance(res.body, (bytes, str)) or hasattr(res.body, '__aiter__'):
+                        return
+
+                    try:
+                        # 1. Clean if enabled - msgspec.convert drops extra fields by default
+                        if protect:
+                            res.body = msgspec.convert(res.body, type=schema)
+                        
+                        # 2. Encode to JSON
+                        res.headers = "Content-Type", "application/json"
+                        res.body = msgspec.json.encode(res.body)
+                    except Exception as e:
+                        # If partial matching is enabled, we might want to try encoding without conversion if conversion failed
+                        if partial and protect:
+                            try:
+                                res.headers = "Content-Type", "application/json"
+                                res.body = msgspec.json.encode(res.body)
+                                return # Success with partial (original data)
+                            except: pass
+
+                        if strict:
+                            res.status = 500
+                            res.body = f"Output Validation Error: {str(e)}".encode()
+                        else:
+                            print(f"⚠️ Heaven Output Warning [{req.route}]: {str(e)}")
+                            # Fallback to normal encoding
+                            res.headers = "Content-Type", "application/json"
+                            res.body = msgspec.json.encode(res.body)
+                
+                self.AFTER(route, output_hook)
+        self._baked = True
 
     async def __call__(self, scope, receive, send):
         if scope['type'] == 'lifespan':
@@ -433,10 +556,17 @@ class Router(object):
         if not engine:
             engine = wildcard_engine if wildcard_engine else self.subdomains.get(DEFAULT)
 
+        if not self._baked: self._bake_schemas()
+
         response = await engine.handle(scope, receive, send, metadata, self)
         if scope['type'] == 'http':
             await send({'type': 'http.response.start', 'headers': response.headers, 'status': response.status})
-            await send({'type': 'http.response.body', 'body': response.body, **response.metadata})
+            if hasattr(response.body, '__aiter__'):
+                async for chunk in response.body:
+                    await send({'type': 'http.response.body', 'body': chunk, 'more_body': True})
+                await send({'type': 'http.response.body', 'body': b'', 'more_body': False})
+            else:
+                await send({'type': 'http.response.body', 'body': response.body, **response.metadata})
         else:
             await send({'type': 'websocket.http.response.start', 'headers': response.headers, 'status': response.status})
 
@@ -655,13 +785,7 @@ class Router(object):
             static_asset = f"{req.params.get('*', '')}"
             location = path.join(assets_folder_path, f'{folder}')
             target_resource_path = path.join(location, static_asset)
-            try:
-                async with async_open_file(target_resource_path, 'rb') as opened_asset_file:
-                    _set_content_type(req, res)
-                    res.body = b''.join(await opened_asset_file.readlines())
-            except Exception as exc:
-                print(exc)
-                res.status = HTTPStatus.NOT_FOUND
+            res.file(target_resource_path)
         self.GET(route, serve_assets, subdomain)
 
     def SOCKET(self, route: str, handler: Handler, subdomain=DEFAULT):
@@ -672,6 +796,85 @@ class Router(object):
 
     def WS(self, route: str, handler: Handler, subdomain=DEFAULT):
         self.abettor(METHOD_WEBSOCKET, route, handler, subdomain)
+
+    def openapi(self):
+        """Generate OpenAPI JSON specification"""
+        paths = {}
+        components = {"schemas": {}}
+        
+        for (method, route), meta in self.schema._schemas.items():
+            path_item = paths.setdefault(route, {})
+            op = {
+                "summary": meta.get("summary") or "",
+                "description": meta.get("description") or "",
+                "responses": {"200": {"description": "Successful Response"}}
+            }
+            
+            expects = meta.get("expects")
+            if expects:
+                schema = msgspec.json.schema(expects)
+                schema_name = getattr(expects, "__name__", "Model")
+                components["schemas"][schema_name] = schema
+                op["requestBody"] = {
+                    "content": {
+                        "application/json": {
+                            "schema": {"$ref": f"#/components/schemas/{schema_name}"}
+                        }
+                    }
+                }
+            
+            returns = meta.get("returns")
+            if returns:
+                schema = msgspec.json.schema(returns)
+                schema_name = getattr(returns, "__name__", "Model")
+                if schema_name not in components["schemas"]:
+                    components["schemas"][schema_name] = schema
+                op["responses"]["200"] = {
+                    "description": "Successful Response",
+                    "content": {
+                        "application/json": {
+                            "schema": {"$ref": f"#/components/schemas/{schema_name}"}
+                        }
+                    }
+                }
+            
+            path_item[method.lower()] = op
+            
+        return {
+            "openapi": "3.1.0",
+            "info": {
+                "title": self._docs_config.get("title", "API Reference") if self._docs_config else "API Reference",
+                "version": self._docs_config.get("version", "0.0.1") if self._docs_config else "0.0.1"
+            },
+            "paths": paths,
+            "components": components
+        }
+
+    def DOCS(self, route: str, title="API Reference", version="0.0.1"):
+        self._docs_config = {"title": title, "version": version}
+        
+        async def openapi_handler(req, res, ctx):
+            res.headers = "Content-Type", "application/json"
+            res.body = json.dumps(self.openapi())
+
+        json_path = f"{route.rstrip('/')}/openapi.json"
+        self.GET(json_path, openapi_handler)
+
+        async def docs_handler(req, res, ctx):
+            res.headers = "Content-Type", "text/html"
+            res.body = f"""<!doctype html>
+<html>
+  <head>
+    <title>{title}</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+  </head>
+  <body>
+    <script id="api-reference" data-url="{json_path}"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
+  </body>
+</html>"""
+        self.GET(route, docs_handler)
 
 
 class Application(Router):...

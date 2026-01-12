@@ -1,6 +1,7 @@
 from datetime import datetime, date
 from typing import Any, TYPE_CHECKING
 from uuid import UUID
+from urllib.parse import parse_qs
 
 from heaven.form import Form
 from heaven.utils import Lookup
@@ -23,34 +24,36 @@ class Request:
         self._subdomain, self._headers = metadata
         self._params = None
         self._queries = None
+        self._data = None
         self._dirty = False
         self._queried = False
         self._mounted_from_application = None
 
-    def _parse_qs(self):
-        qs = self._scope.get("query_string")
-        qsd = {}
-        if not qs:
-            return qsd
-        else:
-            qs = qs.decode() if isinstance(qs, bytes) else qs
+    @property
+    def data(self):
+        return self._data
 
-        query_kv_pairs = qs.split("&")
-        for kv_pair in query_kv_pairs:
-            try: key, value = kv_pair.split("=")
-            except: continue
-            current_value = qsd.get(key)
+    def _parse_qs(self):
+        qs = self._scope.get("query_string", b"")
+        if isinstance(qs, bytes):
+            qs = qs.decode()
+        
+        parsed = parse_qs(qs, keep_blank_values=True)
+        qsd = {}
+        
+        for key, values in parsed.items():
             coercion = self.__qh.get(key)
-            if coercion:
-                try: value = coercion(value)
-                except: pass
-            if not current_value:
-                qsd[key] = value
+            processed_values = []
+            for value in values:
+                if coercion:
+                    try: value = coercion(value)
+                    except: pass
+                processed_values.append(value)
+            
+            if len(processed_values) == 1:
+                qsd[key] = processed_values[0]
             else:
-                if isinstance(current_value, list):
-                    current_value.append(value)
-                else:
-                    qsd[key] = [current_value, value]
+                qsd[key] = processed_values
         return qsd
 
     @property
@@ -79,8 +82,9 @@ class Request:
 
     @property
     def form(self) -> "Form":
-        if not "multipart/form-data" in self.headers.get("content-type"):
-            return None  # currently none
+        content_type = self.headers.get("content-type", "")
+        if not ("multipart/form-data" in content_type or "application/x-www-form-urlencoded" in content_type):
+            return None
         if self._form is None:
             form = Form(self)
             self._form = form
