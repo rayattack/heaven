@@ -5,7 +5,7 @@ from http import HTTPStatus
 from importlib import import_module
 from inspect import iscoroutinefunction
 from os import path, getcwd
-from typing import Any, Callable, Tuple
+from typing import Any, Callable, Tuple, Union
 
 import json
 import mimetypes
@@ -13,8 +13,6 @@ import msgspec
 from aiofiles import open as async_open_file
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from uvicorn import run
-
-from typing import Callable, Union
 
 from .constants import (
     CONNECT,
@@ -37,21 +35,20 @@ from .constants import (
     POST,
     PUT,
     SHUTDOWN,
+    SOCKET,
     STARTUP,
+    STATUS_NOT_FOUND as NOT_FOUND,
     TRACE,
     URL_ERROR_MESSAGE,
     WILDCARD
 )
-
-from .errors import AbortException, SubdomainError, UrlDuplicateError, UrlError
 from .utils import preprocessor
 from .request import Request
 from .response import Response
 from .context import Context, Look
-
+from .errors import AbortException, SubdomainError, UrlDuplicateError, UrlError
 
 methods = ['get', 'post', 'put', 'delete', 'connect', 'head', 'options', 'patch']
-
 
 Handler = Union[Callable[[Request, Response, Context], object], str]
 
@@ -202,7 +199,7 @@ class Routes(object):
         self.afters = {}
         self.befores = {}
 
-        self.cache = {CONNECT: {}, DELETE: {}, GET: {}, HEAD: {}, OPTIONS: {}, PATCH: {}, POST: {}, PUT: {}, TRACE: {}}
+        self.cache = {CONNECT: {}, DELETE: {}, GET: {}, HEAD: {}, OPTIONS: {}, PATCH: {}, POST: {}, PUT: {}, TRACE: {}, SOCKET: {}}
         self.routes = {}
 
     def add(self, method: str, route: str, handler: Callable, router: 'Router'):
@@ -293,18 +290,21 @@ class Routes(object):
         """
         Traverse internal route tree and use appropriate method
         """
+        method = scope.get('method')
+        if scope['type'] == 'websocket': method = SOCKET
+
         body = b''
-        more = True
-        while more:
-            msg = await receive()
-            body += msg.get('body', b'')
-            more = msg.get('more_body', False)
+        if scope['type'] == 'http':
+            more = True
+            while more:
+                msg = await receive()
+                body += msg.get('body', b'')
+                more = msg.get('more_body', False)
 
         r = Request(scope, body, receive, metadata, application)
         c = Context(application)
         w = Response(context=c, app=application, request=r)
 
-        method = scope.get('method')
         matched = None
         handler = None
 
@@ -340,8 +340,23 @@ class Routes(object):
             try: handler.__requesthandler__
             except: pass
             else: handler = handler.__call__
-            if iscoroutinefunction(handler): await handler(r, w, c)
-            else: handler(r, w, c)
+            if method == SOCKET:
+                await send({'type': 'websocket.accept'})
+                async def sender(data):
+                    msg = {'type': 'websocket.send'}
+                    if isinstance(data, str): msg['text'] = data
+                    else: msg['bytes'] = data
+                    await send(msg)
+                
+                async def receiver():
+                    msg = await receive()
+                    return msg.get('text') or msg.get('bytes')
+
+                if iscoroutinefunction(handler): await handler(sender, receiver, r, c)
+                else: handler(sender, receiver, r, c)
+            else:
+                if iscoroutinefunction(handler): await handler(r, w, c)
+                else: handler(r, w, c)
 
             # call all post handle request hooks
             await self.xhooks(self.afters, matched, r, w, c)
@@ -390,6 +405,17 @@ class Routes(object):
 
         for hook in hooks:
             if w._abort: raise AbortException
+            
+            # Check for Earth bypasses
+            application = r._application
+            if application and hasattr(application, 'earth'):
+                if hook in application.earth._bypasses:
+                    continue
+                # Also check unwrapped original if it exists
+                original = getattr(hook, '__wrapped__', hook)
+                if original in application.earth._bypasses:
+                    continue
+
             if iscoroutinefunction(hook): await hook(r, w, c)
             else: hook(r, w, c)
 
@@ -399,13 +425,13 @@ class SchemaRegistry:
         self._router = router
         self._schemas = {}
 
-    def add(self, method: str, route: str, expects=None, returns=None, summary=None, description=None, project=None, partial=None, strict=None):
+    def add(self, method: str, route: str, expects=None, returns=None, summary=None, description=None, protect=None, partial=None, strict=None):
         self._schemas[(method.upper(), route)] = {
             'expects': expects,
             'returns': returns,
             'summary': summary,
             'description': description,
-            'project': project,
+            'protect': protect,
             'partial': partial,
             'strict': strict
         }
@@ -418,7 +444,7 @@ class SchemaRegistry:
 
 
 class Router(object):
-    def __init__(self, configurator=None, project_output=True, allow_partials=False, fail_on_output=True):
+    def __init__(self, configurator=None, protect_output=True, allow_partials=False, fail_on_output=True):
         self.__ws = None
         self.finalized = False
         self.initializers = deque()
@@ -433,7 +459,7 @@ class Router(object):
         self.schema = SchemaRegistry(self)
         self._docs_config = None
         self._baked = False
-        self._project_output = project_output
+        self._protect_output = protect_output
         self._allow_partials = allow_partials
         self._fail_on_output = fail_on_output
 
@@ -465,8 +491,8 @@ class Router(object):
             
             returns = meta.get('returns')
             if returns:
-                project = meta.get('project')
-                if project is None: project = self._project_output
+                protect = meta.get('protect')
+                if protect is None: protect = self._protect_output
                 
                 partial = meta.get('partial')
                 if partial is None: partial = self._allow_partials
@@ -474,15 +500,15 @@ class Router(object):
                 strict = meta.get('strict')
                 if strict is None: strict = self._fail_on_output
                 
-                async def output_hook(req, res, ctx, schema=returns, project=project, partial=partial, strict=strict):
+                async def output_hook(req, res, ctx, schema=returns, protect=protect, partial=partial, strict=strict):
                     if res.body is None or res._abort: return
                     # Skip if body is already bytes/generator (user manually handled it)
                     if isinstance(res.body, (bytes, str)) or hasattr(res.body, '__aiter__'):
                         return
 
                     try:
-                        # 1. Project/Clean if enabled - msgspec.convert drops extra fields by default
-                        if project:
+                        # 1. Clean if enabled - msgspec.convert drops extra fields by default
+                        if protect:
                             res.body = msgspec.convert(res.body, type=schema)
                         
                         # 2. Encode to JSON
@@ -490,7 +516,7 @@ class Router(object):
                         res.body = msgspec.json.encode(res.body)
                     except Exception as e:
                         # If partial matching is enabled, we might want to try encoding without conversion if conversion failed
-                        if partial and project:
+                        if partial and protect:
                             try:
                                 res.headers = "Content-Type", "application/json"
                                 res.body = msgspec.json.encode(res.body)

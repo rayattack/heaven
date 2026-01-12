@@ -1,6 +1,9 @@
+import asyncio
 import json
+import random
+import string
 from typing import Union, Any, Dict, Optional, Tuple
-from .constants import DEFAULT, GET, POST, PUT, DELETE, PATCH
+from .constants import DEFAULT, GET, POST, PUT, DELETE, PATCH, WILDCARD
 from .mocks import _listify_headers, MockRequest, MockResponse, MockContext
 from .request import Request
 from .response import Response
@@ -13,6 +16,11 @@ class Earth:
         self._session_cookies = {}
         self._track_session = False
         self._swaps = {}
+        self._bypasses = set()
+
+    def bypass(self, middleware):
+        """Register a middleware to be bypassed during tests"""
+        self._bypasses.add(middleware)
 
     def swap(self, old_func, new_func):
         """Register a hook to be swapped during tests"""
@@ -41,7 +49,7 @@ class Earth:
     def res(self, *args, **kwargs): return self.response(*args, **kwargs)
     def ctx(self, *args, **kwargs): return self.context(*args, **kwargs)
 
-    async def _simulate(self, method: str, url: str, body: Any = b'', headers: Dict = None) -> Tuple[Request, Response, Context]:
+    async def _simulate(self, method: str, url: str, body: Any = b'', headers: Dict = None, subdomain: str = DEFAULT) -> Tuple[Request, Response, Context]:
         final_headers = {**self._session_headers, **(headers or {})}
         
         if isinstance(body, (dict, list)):
@@ -74,9 +82,9 @@ class Earth:
 
         async def send(msg): pass
 
-        engine = self._app.subdomains.get(DEFAULT)
+        engine = self._app.subdomains.get(subdomain)
         from .utils import preprocessor
-        metadata = preprocessor(scope) 
+        metadata = subdomain, preprocessor(scope)[1] # Update subdomain in metadata
         
         if not self._app._baked: self._app._bake_schemas()
 
@@ -97,11 +105,47 @@ class Earth:
 
         return res._req, res, res._ctx
 
-    async def GET(self, url, **kwargs): return await self._simulate(GET, url, **kwargs)
-    async def POST(self, url, **kwargs): return await self._simulate(POST, url, **kwargs)
-    async def PUT(self, url, **kwargs): return await self._simulate(PUT, url, **kwargs)
-    async def DELETE(self, url, **kwargs): return await self._simulate(DELETE, url, **kwargs)
-    async def PATCH(self, url, **kwargs): return await self._simulate(PATCH, url, **kwargs)
+    async def upload(self, url: str, files: Dict[str, Any] = None, data: Dict[str, str] = None, subdomain: str = DEFAULT, **kwargs) -> Tuple[Request, Response, Context]:
+        """Helper to simulate multipart/form-data uploads"""
+        boundary = '----HeavenEarthBoundary' + ''.join(random.choices(string.ascii_letters + string.digits, k=16))
+        body = b''
+        
+        # Add data fields
+        if data:
+            for name, value in data.items():
+                body += f'--{boundary}\r\n'.encode()
+                body += f'Content-Disposition: form-data; name="{name}"\r\n\r\n'.encode()
+                body += f'{value}\r\n'.encode()
+        
+        # Add files
+        if files:
+            for name, content in files.items():
+                filename = 'test_file'
+                if isinstance(content, tuple):
+                    filename, content = content
+                body += f'--{boundary}\r\n'.encode()
+                body += f'Content-Disposition: form-data; name="{name}"; filename="{filename}"\r\n'.encode()
+                body += b'Content-Type: application/octet-stream\r\n\r\n'
+                body += content + b'\r\n'
+        
+        if body:
+            body += f'--{boundary}--\r\n'.encode()
+        
+        headers = kwargs.get('headers', {})
+        headers['content-type'] = f'multipart/form-data; boundary={boundary}'
+        kwargs['headers'] = headers
+        
+        return await self._simulate(POST, url, body=body, subdomain=subdomain, **kwargs)
+
+    def SOCKET(self, url: str, subdomain: str = DEFAULT) -> 'MockSocket':
+        """Helper to simulate WebSocket connections"""
+        return MockSocket(self, url, subdomain=subdomain)
+
+    async def GET(self, url, subdomain: str = DEFAULT, **kwargs): return await self._simulate(GET, url, subdomain=subdomain, **kwargs)
+    async def POST(self, url, subdomain: str = DEFAULT, **kwargs): return await self._simulate(POST, url, subdomain=subdomain, **kwargs)
+    async def PUT(self, url, subdomain: str = DEFAULT, **kwargs): return await self._simulate(PUT, url, subdomain=subdomain, **kwargs)
+    async def DELETE(self, url, subdomain: str = DEFAULT, **kwargs): return await self._simulate(DELETE, url, subdomain=subdomain, **kwargs)
+    async def PATCH(self, url, subdomain: str = DEFAULT, **kwargs): return await self._simulate(PATCH, url, subdomain=subdomain, **kwargs)
 
     def test(self, track_session=True):
         return EarthContextManager(self, track_session)
@@ -159,3 +203,81 @@ class EarthContextManager:
             self.earth._app.deinitializers.extend(self._original_deinitializers)
             
         await self.earth._app._unregister()
+
+class MockSocket:
+    def __init__(self, earth: Earth, url: str, subdomain: str = DEFAULT):
+        self.earth = earth
+        self.url = url
+        self.subdomain = subdomain
+        self.incoming = asyncio.Queue()
+        self.outgoing = asyncio.Queue()
+        self.closed = False
+        self.accepted = False
+        self.task = None
+
+    async def connect(self):
+        scope = {
+            'type': 'websocket',
+            'path': self.url,
+            'raw_path': self.url,
+            'query_string': b'',
+            'headers': _listify_headers(self.earth._session_headers),
+            'subdomain': self.subdomain,
+            'client': ('127.0.0.1', 8080),
+            'scheme': 'ws',
+        }
+        
+        async def receive():
+            # Initial connect or subsequent messages
+            if not self.accepted:
+                return {'type': 'websocket.connect'}
+            return await self.incoming.get()
+
+        async def send(msg):
+            if msg['type'] == 'websocket.accept':
+                self.accepted = True
+            elif msg['type'] == 'websocket.send':
+                await self.outgoing.put(msg.get('text') or msg.get('bytes'))
+            elif msg['type'] == 'websocket.close':
+                self.closed = True
+                self.accepted = False
+
+        engine = self.earth._app.subdomains.get(self.subdomain)
+        if not engine:
+            wildcard_engine = self.earth._app.subdomains.get(WILDCARD)
+            engine = wildcard_engine if wildcard_engine else self.earth._app.subdomains.get(DEFAULT)
+        
+        # Handle the websocket connection in a task
+        metadata = (self.subdomain, self.earth._session_headers)
+        self.task = asyncio.create_task(engine.handle(scope, receive, send, metadata=metadata, application=self.earth._app))
+        
+        # Wait a bit for accept
+        timeout = 2.0
+        start = asyncio.get_event_loop().time()
+        while not self.accepted and not self.closed:
+            await asyncio.sleep(0.01)
+            if asyncio.get_event_loop().time() - start > timeout:
+                raise TimeoutError("WebSocket connection timed out")
+        
+        return self
+
+    async def send(self, data):
+        """Send message from client to app"""
+        msg = {'type': 'websocket.receive'}
+        if isinstance(data, str): msg['text'] = data
+        else: msg['bytes'] = data
+        await self.incoming.put(msg)
+
+    async def receive(self, timeout=None):
+        """Receive message from app to client"""
+        if timeout:
+            return await asyncio.wait_for(self.outgoing.get(), timeout)
+        return await self.outgoing.get()
+
+    async def close(self, code=1000):
+        await self.incoming.put({'type': 'websocket.disconnect', 'code': code})
+        self.closed = True
+        self.accepted = False
+        if self.task:
+            try: await asyncio.wait_for(self.task, timeout=1.0)
+            except asyncio.TimeoutError: pass

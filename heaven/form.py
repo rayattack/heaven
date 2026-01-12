@@ -7,6 +7,11 @@ if TYPE_CHECKING:
     from heaven.request import Request
 
 
+class File(object):
+    def __init__(self, filename: str, content: bytes):
+        self.filename = filename
+        self.content = content
+
 class Form(object):
     def __init__(self, req: 'Request'):
         self._data = {}
@@ -31,9 +36,13 @@ class Form(object):
             for part in msg.get_payload():
                 name = part.get_param('name', header='content-disposition')
                 if name:
-                    # For now, just store the bytes payload
-                    # We might want to handle file uploads differently later
+                    filename = part.get_filename()
                     value = part.get_payload(decode=True)
+                    if filename:
+                        value = File(filename, value)
+                    else:
+                        try: value = value.decode()
+                        except: pass
                     self._add_to_data(name, value)
 
     def _parse_urlencoded(self, req: 'Request'):
@@ -41,7 +50,7 @@ class Form(object):
         parsed = parse_qs(body)
         for key, values in parsed.items():
             for value in values:
-                self._add_to_data(key, value.encode() if isinstance(value, str) else value)
+                self._add_to_data(key, value)
 
     def _add_to_data(self, key: str, value: Any):
         if key in self._data:

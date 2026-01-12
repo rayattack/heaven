@@ -80,19 +80,19 @@ router.AFTER('/orders/*', handler)
     #### Advanced Schema Options
     You can control how Heaven handles incoming and outgoing data using these optional flags in `.schema` methods:
 
-    - **`project: bool`**: When `True` (default), Heaven will automatically "clean" your response data by removing any fields not present in the `returns` schema. This is perfect for leaking-proof APIs.
+    - **`protect: bool`**: When `True` (default), Heaven will automatically "protect" your response data by removing any fields not present in the `returns` schema. This is perfect for leak-proofing APIs.
     - **`partial: bool`**: When `True`, Heaven allows "subset matching." If your response is missing some fields from the schema, it will still pass (default: `False`).
     - **`strict: bool`**: When `True` (default), output validation failures (missing required fields) will result in a `500 Internal Server Error`. If `False`, it will only log a warning and return the data as-is.
 
     ```python
     # Example: Return only what's in User schema, even if DB returns more.
     # Allow missing fields (partial) and just warn on mismatch (strict=False).
-    app.schema.GET('/users/:id', returns=User, project=True, partial=True, strict=False)
+    app.schema.GET('/users/:id', returns=User, protect=True, partial=True, strict=False)
     ```
 
     You can also set these globally when initializing your app:
     ```python
-    app = App(project_output=True, allow_partials=False, fail_on_output=True)
+    app = App(protect_output=True, allow_partials=False, fail_on_output=True)
     ```
 
 - **`router.DOCS(route: str, title: str = "API Reference", version: str = "0.0.1")`** -> Automatically generates a dynamic `openapi.json` and serves an interactive **Scalar** API reference at the provided route.
@@ -103,7 +103,7 @@ router.AFTER('/orders/*', handler)
 - **`router.earth`** -> The built-in testing utility. It provides a clean API for both integration and unit testing.
 
     #### Integration Testing
-    Simulate full requests through the entire framework stack (Hooks, Matching, Handlers, Projection).
+    Simulate full requests through the entire framework stack (Hooks, Matching, Handlers, Protection).
     ```py
     # Returns the actual (req, res, ctx) trio used during the lifecycle
     req, res, ctx = await app.earth.POST('/users', body={"name": "Ray"})
@@ -133,6 +133,46 @@ router.AFTER('/orders/*', handler)
         await earth.POST('/login', body={"user": "admin"}) # Sets a cookie
         req, res, ctx = await earth.GET('/dashboard')    # Cookie tracked automatically
         assert res.status == 200
+    ```
+
+    #### Subdomain Testing
+    Heaven is built for subdomains. You can specify which subdomain to target in your tests.
+    ```py
+    # Defaults to 'www'
+    req, res, ctx = await app.earth.GET('/api-info', subdomain='api')
+    assert res.status == 200
+    ```
+
+    #### Middleware Bypass
+    Sometimes you want to test a route but skip a heavy or blocking middleware (like a complex Auth check).
+    ```py
+    app.earth.bypass(heavy_middleware)
+    
+    async with app.earth.test() as earth:
+        # heavy_middleware will be skipped for all requests in this block
+        await earth.GET('/fast-route')
+    ```
+
+    #### File Uploads
+    Testing multipart/form-data is easy with the `upload` helper.
+    ```py
+    files = {'image': b'binary_data_here'}
+    req, res, ctx = await app.earth.upload('/save-avatar', files=files, data={'id': '123'})
+    assert res.status == 200
+    ```
+
+    #### WebSocket Testing
+    Simulate real-time interactions without a real server.
+    ```py
+    # 1. Connect
+    ws = await app.earth.SOCKET('/chat').connect()
+    
+    # 2. Communicate
+    await ws.send("Hello Heaven!")
+    response = await ws.receive()
+    
+    # 3. Cleanup
+    await ws.close()
     ```
 
     #### Mocking Infrastructure
