@@ -146,24 +146,32 @@ def handlers(target_path: Optional[str] = None):
                         matches.append((method, path, handler))
         
         if found:
-            for method, path, handler in matches:
-                try:
-                    # Deeply follow the breadcrumbs through decorators and partials
-                    original_handler = _deep_unwrap(handler)
-                    source = inspect.getsource(original_handler)
-                    file = inspect.getsourcefile(original_handler)
-                    line = inspect.getsourcelines(original_handler)[1]
-                    
-                    syntax = Syntax(source, "python", theme="monokai", line_numbers=True, start_line=line)
-                    console.print(Panel(
-                        syntax,
-                        title=f"[bold green]{method} {path}[/bold green]",
-                        subtitle=f"[dim]{file}:{line}[/dim]",
-                        expand=False
-                    ))
-                except Exception as e:
-                     console.print(f"[bold yellow]Handler found but source unavailable:[/bold yellow] {handler}")
-                     console.print(f"[dim]Reason: {e}[/dim]")
+            with console.pager(styles=True):
+                for method, path, handler in matches:
+                    try:
+                        # Deeply follow the breadcrumbs through decorators and partials
+                        original_handler = _deep_unwrap(handler)
+                        source = inspect.getsource(original_handler)
+                        file = inspect.getsourcefile(original_handler)
+                        line = inspect.getsourcelines(original_handler)[1]
+                        
+                        syntax = Syntax(
+                            source, 
+                            "python", 
+                            theme="monokai", 
+                            line_numbers=True, 
+                            start_line=line,
+                            word_wrap=True
+                        )
+                        console.print(Panel(
+                            syntax,
+                            title=f"[bold green]{method} {path}[/bold green]",
+                            subtitle=f"[dim]{file}:{line}[/dim]",
+                            expand=False
+                        ))
+                    except Exception as e:
+                         console.print(f"[bold yellow]Handler found but source unavailable:[/bold yellow] {handler}")
+                         console.print(f"[dim]Reason: {e}[/dim]")
         else:
             console.print(f"[bold red]Error:[/bold red] No handler found for path [bold cyan]{target_path}[/bold cyan]")
     else:

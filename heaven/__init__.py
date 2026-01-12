@@ -8,4 +8,4 @@ from .response import Response
 from .context import Context
 
 
-__version__ = '0.6.6'
+__version__ = '0.6.7'
