@@ -55,3 +55,45 @@ def private(resource: str):
 		return delegate
 	return wrapper
 ```
+
+#### Schema Validation & Documentation
+
+Use `router.schema` to define your API contracts and `router.DOCS` to generate interactive documentation.
+
+```py
+import msgspec
+from heaven import App
+
+app = App()
+
+class User(msgspec.Struct):
+    id: int
+    email: str
+    role: str = "guest"
+
+# Define your handler
+async def create_user(req, res, ctx):
+    user = req.data # Validated User struct
+    print(f"Creating user: {user.email}")
+    res.body = {"status": "created", "id": 123}
+
+# 1. Register endpoint metadata
+app.schema.POST(
+    '/v1/users', 
+    expects=User, 
+    returns=dict, 
+    summary="Create a new user",
+    description="Creates a guest user by default if role is not provided."
+)
+
+# 2. Register handler
+app.POST('/v1/users', create_user)
+
+# 3. Enable Scalar Documentation
+app.DOCS('/api/docs', title="User Service API")
+```
+
+The above setup provides:
+- **Automatic 422 errors** for invalid JSON.
+- **Static typing** in your handler via `req.data`.
+- **Interactive docs** at `/api/docs`.

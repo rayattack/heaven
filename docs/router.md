@@ -65,6 +65,22 @@ router.AFTER('/orders/*', handler)
     work in similar fashion. The `subdomain` optional argument limits the matching to a subdomain.
 
 - **`router.HTTP(url: str, handler: func)`** -> Registers your custom handlers/functions to all HTTP methods i.e. GET, PUT, POST, PUT, PATCH instead of doing it individually.
+- **`router.schema`** -> A registry for attaching metadata (OpenAPI schemas) to routes. It supports `GET`, `POST`, `PUT`, `DELETE`, and `PATCH` methods.
+    ```py
+    from msgspec import Struct
+
+    class User(Struct):
+        id: int
+        name: str
+
+    # Sidecar registration of metadata
+    app.schema.POST('/users', expects=User, returns=User, summary="Create User")
+    ```
+
+- **`router.DOCS(route: str, title: str = "API Reference", version: str = "0.0.1")`** -> Automatically generates a dynamic `openapi.json` and serves an interactive **Scalar** API reference at the provided route.
+    ```py
+    app.DOCS('/api/docs', title="My Insanely Fast API")
+    ```
 
 
 ## Heaven is a Global Config & Store

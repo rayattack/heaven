@@ -39,6 +39,15 @@ and all Request objects come with the following helper properties (bag of goodie
     ...
     ```
 
+- **`req.data: msgspec.Struct`** -> If a schema was registered for the route via `router.schema`, this property 
+    will hold the validated `msgspec.Struct` instance. If validation failed, Heaven will have already aborted 
+    the request with a `422` status.
+    ```py
+    def handler(req, res, ctx):
+        user = req.data # instance of your msgspec.Struct
+        print(user.id)
+    ```
+
 - **`req.cookies: dict`** -> All the cookies sent with request **_[case sensitive - case preserved]_**
     ```py 
     ...

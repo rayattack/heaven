@@ -1,37 +1,62 @@
+from email.parser import BytesParser
+from email.policy import default
 from typing import Any, TYPE_CHECKING
+from urllib.parse import parse_qs
 
 if TYPE_CHECKING:
     from heaven.request import Request
 
 
-ST = b'--'
-NL = b'\r\n'
-
-
-def _reqparser(req) -> dict:
-    data = {}
-    body = req.body
-    ct = req.headers.get('content-type')
-    stopper = ct.split('boundary=')[-1]
-    stopped = body.split(stopper.encode())
-    portions = [p.strip(NL).strip(ST).strip(NL) for p in stopped]
-    for portion in portions:
-        if portion == b'': continue
-        prepart, _, postpart = portion.partition(NL * 2)
-        key = _keyxtractor(prepart)
-        data[key.decode()] = postpart
-    return data
-
-
-def _keyxtractor(s) -> str:
-    for portion in s.split(b';'):
-        name = portion.split(b'=')
-        if name[0].strip(b' ') == b'name': return name[-1].strip(b'"')
-
-
 class Form(object):
     def __init__(self, req: 'Request'):
-        self._data = _reqparser(req)
+        self._data = {}
+        self._parse(req)
+
+    def _parse(self, req: 'Request'):
+        content_type = req.headers.get('content-type', '')
+        if 'multipart/form-data' in content_type:
+            self._parse_multipart(req, content_type)
+        elif 'application/x-www-form-urlencoded' in content_type:
+            self._parse_urlencoded(req)
+
+    def _parse_multipart(self, req: 'Request', content_type: str):
+        # email.parser expects the headers to be part of the bytes
+        body = req.body
+        # Ensure we have a leading boundary if it's missing or if we need to prep for parser
+        # Actually BytesParser handles it if we provide the Content-Type header
+        headers = f"Content-Type: {content_type}\r\n\r\n".encode()
+        msg = BytesParser(policy=default).parsebytes(headers + body)
+        
+        if msg.is_multipart():
+            for part in msg.get_payload():
+                name = part.get_param('name', header='content-disposition')
+                if name:
+                    # For now, just store the bytes payload
+                    # We might want to handle file uploads differently later
+                    value = part.get_payload(decode=True)
+                    self._add_to_data(name, value)
+
+    def _parse_urlencoded(self, req: 'Request'):
+        body = req.body.decode() if isinstance(req.body, bytes) else req.body
+        parsed = parse_qs(body)
+        for key, values in parsed.items():
+            for value in values:
+                self._add_to_data(key, value.encode() if isinstance(value, str) else value)
+
+    def _add_to_data(self, key: str, value: Any):
+        if key in self._data:
+            if isinstance(self._data[key], list):
+                self._data[key].append(value)
+            else:
+                self._data[key] = [self._data[key], value]
+        else:
+            self._data[key] = value
 
     def __getattr__(self, name: str) -> Any:
         return self._data.get(name)
+
+    def get(self, name: str, default: Any = None) -> Any:
+        return self._data.get(name, default)
+
+    def to_dict(self) -> dict:
+        return self._data

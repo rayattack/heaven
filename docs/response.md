@@ -41,6 +41,13 @@ the following `properties` & `methods` to help with responding to http requests.
         res.headers = 'Location', '/location'
         ```
         Browsers will redirect upon receipt of the header and http status above.
+- **`res.file(path: str, filename: str = None)`** -> Serve a file from the filesystem with automatic 
+        MIME type detection and streaming support. If `filename` is provided, it sets the `Content-Disposition` 
+        to `attachment`, otherwise it defaults to `inline`.
+        ```py
+        async def download_report(req, res, ctx):
+            res.file('/path/to/report.pdf', filename='monthly_report.pdf')
+        ```
 
 - **`res.abort(payload: any)`** -> If this is called then all `PRE` and `POST` [hooks](router.md) will be aborted
 

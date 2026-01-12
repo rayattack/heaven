@@ -1,9 +1,9 @@
+import mimetypes
 from http import HTTPStatus
 from os import path
+from typing import AsyncGenerator, Optional, Union, TYPE_CHECKING
 
 from functools import singledispatch, update_wrapper
-from http import HTTPStatus
-from typing import TYPE_CHECKING
 
 from .constants import MESSAGE_NOT_FOUND, STATUS_NOT_FOUND
 from .context import Context
@@ -36,6 +36,15 @@ def _(payload: str):
 @_body.register(float)
 def _(payload):
     return f'{payload}'.encode()
+
+def is_async_gen(obj):
+    return hasattr(obj, '__aiter__') or hasattr(obj, '__anext__')
+
+@_body.register(object)
+def _(payload):
+    if is_async_gen(payload):
+        return payload
+    return payload
 
 def _get_guardian_angel(res: 'Response', error: str, snippet: str):
     res.headers = 'Content-Type', 'text/html'
@@ -210,4 +219,32 @@ class Response():
         if not templater.is_async: raise AttributeError('Async rendering not supported by sync renderer')
         template = templater.get_template(name)
         return await template.render_async({'ctx': self._ctx, **contexts})
+
+    def file(self, filepath: str, filename: Optional[str] = None, chunk_size: int = 4096) -> 'Response':
+        """Serve a file from the filesystem with streaming support"""
+        if not path.isfile(filepath):
+            self.status = HTTPStatus.NOT_FOUND
+            self.body = b'File not found'
+            return self
+
+        mime_type, _ = mimetypes.guess_type(filepath)
+        self.headers = 'Content-Type', mime_type or 'application/octet-stream'
+        
+        if filename:
+            self.headers = 'Content-Disposition', f'attachment; filename="{filename}"'
+        else:
+            self.headers = 'Content-Disposition', f'inline; filename="{path.basename(filepath)}"'
+
+        async def file_sender():
+            from aiofiles import open as async_open
+            async with async_open(filepath, mode='rb') as f:
+                while True:
+                    chunk = await f.read(chunk_size)
+                    if not chunk:
+                        break
+                    yield chunk
+
+        self.body = file_sender()
+        self.status = HTTPStatus.OK
+        return self
 
