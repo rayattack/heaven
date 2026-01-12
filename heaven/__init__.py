@@ -1,3 +1,4 @@
+from msgspec import Struct as Schema
 from .router import App, Application
 from .router import Router
 from .router import Server
@@ -7,5 +8,5 @@ from .response import Response
 from .context import Context
 
 
-__version___ = '0.5.1'
+__version__ = '0.6.0'
 

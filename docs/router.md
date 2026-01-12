@@ -77,6 +77,9 @@ router.AFTER('/orders/*', handler)
     app.schema.POST('/users', expects=User, returns=User, summary="Create User")
     ```
 
+    > [!TIP]
+    > Heaven's `Schema` is a direct export of the high-performance `msgspec.Struct`. To learn more about advanced features like default values, tagging, and validation, visit the [msgspec documentation](https://jcristharif.com/msgspec/structs.html).
+
     #### Advanced Schema Options
     You can control how Heaven handles incoming and outgoing data using these optional flags in `.schema` methods:
 
