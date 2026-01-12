@@ -5,6 +5,7 @@ import inspect
 from typing import Optional, Any
 import uvicorn
 import json
+from functools import partial
 from rich.syntax import Syntax
 from rich.console import Console
 from rich.table import Table
@@ -14,6 +15,17 @@ from rich import print as rprint
 from heaven import App, Router
 
 console = Console()
+
+def _deep_unwrap(func: Any) -> Any:
+    """Recursively unwrap both @wraps decorators and functools.partial objects."""
+    while True:
+        if hasattr(func, "func") and isinstance(func, partial):
+            func = func.func
+        elif hasattr(func, "__wrapped__"):
+            func = func.__wrapped__
+        else:
+            break
+    return func
 
 def find_app() -> Optional[Any]:
     """Search for an App or Router instance in common files."""
@@ -90,9 +102,10 @@ def routes(app_path: Optional[str] = None):
         # Iterate over all methods in cache
         for method, paths in routes_obj.cache.items():
             for path, handler in paths.items():
+                original = _deep_unwrap(handler)
                 handler_name = ""
-                if hasattr(handler, '__name__'):
-                    handler_name = f" ({handler.__name__})"
+                if hasattr(original, '__name__'):
+                    handler_name = f" ({original.__name__})"
                 elif isinstance(handler, str):
                     handler_name = f" ({handler})"
                 
@@ -129,8 +142,8 @@ def handlers(target_path: Optional[str] = None):
                     if path == target_path:
                         found = True
                         try:
-                            # Follow the breadcrumbs if the function is decorated with @wraps
-                            original_handler = inspect.unwrap(handler)
+                            # Deeply follow the breadcrumbs through decorators and partials
+                            original_handler = _deep_unwrap(handler)
                             source = inspect.getsource(original_handler)
                             file = inspect.getsourcefile(original_handler)
                             line = inspect.getsourcelines(original_handler)[1]
@@ -159,8 +172,8 @@ def handlers(target_path: Optional[str] = None):
             for method, paths in routes_obj.cache.items():
                 for path, handler in paths.items():
                     try:
-                        # Follow breadcrumbs if the function is @wrapped
-                        original = inspect.unwrap(handler)
+                        # Deeply follow breadcrumbs for accurate metadata
+                        original = _deep_unwrap(handler)
                         file = os.path.relpath(inspect.getsourcefile(original))
                         line = inspect.getsourcelines(original)[1]
                         loc = f"{file}:{line}"

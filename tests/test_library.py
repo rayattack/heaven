@@ -4,7 +4,7 @@ from msgspec import Struct
 
 class TestLibrary(unittest.TestCase):
     def test_version(self):
-        self.assertEqual(heaven.__version__, '0.6.3')
+        self.assertEqual(heaven.__version__, '0.6.4')
 
     def test_schema_export(self):
         from heaven import Schema
