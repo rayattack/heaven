@@ -425,7 +425,7 @@ class SchemaRegistry:
         self._router = router
         self._schemas = {}
 
-    def add(self, method: str, route: str, expects=None, returns=None, summary=None, description=None, protect=None, partial=None, strict=None):
+    def add(self, method: str, route: str, expects=None, returns=None, summary=None, description=None, protect=None, partial=None, strict=None, title=None):
         self._schemas[(method.upper(), route)] = {
             'expects': expects,
             'returns': returns,
@@ -433,7 +433,8 @@ class SchemaRegistry:
             'description': description,
             'protect': protect,
             'partial': partial,
-            'strict': strict
+            'strict': strict,
+            'title': title
         }
 
     def POST(self, route: str, **kwargs): self.add('POST', route, **kwargs)
@@ -806,19 +807,51 @@ class Router(object):
         paths = {}
         components = {"schemas": {}}
         
+        def _register_schema(schema_cls, name=None):
+            """Recursively register schemas and their definitions"""
+            if not name:
+                name = getattr(schema_cls, "__name__", "Model")
+                
+            # If already registered, return name
+            if name in components["schemas"]:
+                return name
+
+            # Generate schema
+            js = msgspec.json.schema(schema_cls)
+            
+            # Extract definitions
+            defs = js.pop("$defs", {})
+            
+            # If js is a reference to a local def, resolve it
+            if "$ref" in js and js["$ref"].startswith("#/$defs/"):
+                ref_name = js["$ref"].split("/")[-1]
+                if ref_name in defs:
+                    # The main schema IS this definition
+                    js = defs.pop(ref_name)
+            
+            # Register remaining definitions
+            for def_name, def_schema in defs.items():
+                if def_name not in components["schemas"]:
+                    components["schemas"][def_name] = def_schema
+            
+            # Register main schema
+            components["schemas"][name] = js
+            return name
+
         for (method, route), meta in self.schema._schemas.items():
             path_item = paths.setdefault(route, {})
+            # Use provided title or empty string
+            summary = meta.get("summary") or meta.get("title") or ""
             op = {
-                "summary": meta.get("summary") or "",
+                "summary": summary,
                 "description": meta.get("description") or "",
                 "responses": {"200": {"description": "Successful Response"}}
             }
             
             expects = meta.get("expects")
             if expects:
-                schema = msgspec.json.schema(expects)
-                schema_name = getattr(expects, "__name__", "Model")
-                components["schemas"][schema_name] = schema
+                # Register schema and get name
+                schema_name = _register_schema(expects)
                 op["requestBody"] = {
                     "content": {
                         "application/json": {
@@ -829,10 +862,7 @@ class Router(object):
             
             returns = meta.get("returns")
             if returns:
-                schema = msgspec.json.schema(returns)
-                schema_name = getattr(returns, "__name__", "Model")
-                if schema_name not in components["schemas"]:
-                    components["schemas"][schema_name] = schema
+                schema_name = _register_schema(returns)
                 op["responses"]["200"] = {
                     "description": "Successful Response",
                     "content": {
@@ -854,7 +884,7 @@ class Router(object):
             "components": components
         }
 
-    def DOCS(self, route: str, title="API Reference", version="0.0.1"):
+    def DOCS(self, route: str, title="API Reference", version="0.0.1", subdomain=DEFAULT):
         self._docs_config = {"title": title, "version": version}
         
         async def openapi_handler(req, res, ctx):
@@ -862,7 +892,7 @@ class Router(object):
             res.body = json.dumps(self.openapi())
 
         json_path = f"{route.rstrip('/')}/openapi.json"
-        self.GET(json_path, openapi_handler)
+        self.GET(json_path, openapi_handler, subdomain=subdomain)
 
         async def docs_handler(req, res, ctx):
             res.headers = "Content-Type", "text/html"
@@ -878,7 +908,7 @@ class Router(object):
     <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
   </body>
 </html>"""
-        self.GET(route, docs_handler)
+        self.GET(route, docs_handler, subdomain=subdomain)
 
 
 class Application(Router):...

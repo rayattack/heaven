@@ -24,7 +24,7 @@ plugins:
       minify_html: true
 
 nav:
-  - Heaven v0.6.10: index.md
+  - Heaven v0.6.11: index.md
   - Min. 1&colon; Quickstart: quickstart.md
   - Min. 2&colon; Request to Heaven: request.md
   - Min. 3&colon; Response from Heaven: response.md
