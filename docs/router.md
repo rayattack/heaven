@@ -67,9 +67,9 @@ router.AFTER('/orders/*', handler)
 - **`router.HTTP(url: str, handler: func)`** -> Registers your custom handlers/functions to all HTTP methods i.e. GET, PUT, POST, PUT, PATCH instead of doing it individually.
 - **`router.schema`** -> A registry for attaching metadata (OpenAPI schemas) to routes. It supports `GET`, `POST`, `PUT`, `DELETE`, and `PATCH` methods.
     ```py
-    from msgspec import Struct
+    from heaven import Schema
 
-    class User(Struct):
+    class User(Schema):
         id: int
         name: str
 

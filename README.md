@@ -50,8 +50,9 @@ async def welcome(req, res, ctx):
 app.GET('/api/v1/welcome', welcome)
 
 # Automatic OpenAPI Docs
-from msgspec import Struct
-class User(Struct):
+from heaven import Schema
+
+class User(Schema):
     name: str
 
 app.schema.POST('/user', expects=User, summary="Create User")
