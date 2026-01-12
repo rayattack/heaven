@@ -1,12 +1,25 @@
-## How quick was that?
+# Minute 10: Mastery 🏆
 
-Did you get here in 10 minutes? If you did - congratulations. If not, congats all the same. We read at different speeds
-and that variety is said to be the spice of life.
+**Checkmate.**
 
-If you need more than 10 minutes: there is an API reference and large collection of code examples as optional reading material
-in the next sections.
+You have traversed the board. You know the opening (`fly`), the mid-game (`router`, `schema`), and the endgame (`deployment`).
 
-If not, pick your farewell: **May the force be with you** or **Live long and prosper**
+You are no longer just a Python developer. You are a Heaven Master.
 
+## The Future
+
+This documentation is short because the framework is simple. But simplicity does not mean weakness. Heaven is capable of powering everything from microservices to massive monolithic platforms.
+
+Go forth and build something divine.
+
+> "Simplicity is the ultimate sophistication." — *Leonardo da Vinci*
 
 ---
+
+### Where to go from here?
+
+- **[API Reference](api.md)**: The raw dictionary of every method.
+- **[Examples](examples.md)**: Real-world patterns and recipes.
+- **[GitHub](https://github.com/rayattack/heaven)**: Star the repo, file an issue, or contribute.
+
+May your response times be low and your uptime high. ⚡

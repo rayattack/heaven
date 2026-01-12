@@ -1,40 +1,70 @@
-# Welcome to Heaven ⚡
+# The Developer Experience Dream
 
-You are here because you want to build Python web applications without the boilerplate, the bloat, or the confusion.
+**Heaven** was born from a simple dream: *You shouldn't need a PhD in web development to build an enterprise web application*
 
-**Heaven** is the super-simple, extremely fast, web framework for purists. It doesn't use "magic" decorators to hide how things work. It gives you raw ASGI speed with a developer experience that allows for **complete mastery in 10 minutes or less.**
+Web development is like a **chess board**. Many frameworks expect you to be [Magnus Carlsen](https://en.wikipedia.org/wiki/Magnus_Carlsen) before you can play (create) a **legendary** game (web application).
+
+Most modern frameworks are like a crowded room shouting suggestions at you. They try to be everything for everyone. They bury you in layers of abstraction until you forget what HTTP looks like.
+
+**Heaven is different.**
+
+It gives you raw, unadulterated power and gets out of your way immediately with a syntax designed for
+an **average developer to understand in 10 minutes** or less.
+
+-------
+
+*yourapp/app.py*
+```py
+from heaven import Router
+
+# create the application
+app = Router()
+
+# define a route and tell heaven where it can find your handler
+app.GET('/v1/games/:id', 'controllers.games.play_a_game')
+```
+
+-------
+
+*yourapp/controllers/games.py*
+```py
+def play_a_game(req, res, ctx):
+  res.body = 'Checkmate.'
+```
+
+-------
+
+## Why Another Python Framework?
+
+Tired of **Flask's** thread-local magic and aging internals.
+Tired of **Django's** monolithic weight.
+Tired of **FastAPI's** dependency injection labyrinth?
+
+Looking for something **Powerful** and lightning **Fast**.
+A framework that **You won't spend months learning**, cos life is too short - and more importantly
+**years mastering**?
+
+... then you belong in **Heaven**.
+
+
+## Your 10-Minute Path to Mastery
+
+Because Heaven relies on standard Python and pure HTTP concepts, you don't need a 500-page manual. You need 10 minutes.
+
+- **[Minute 1: The Beginning](quickstart.md)** - From Zero to Hello World.
+- **[Minute 2: The Command Line](cli.md)** - Controlling the skies with `fly` and `run`.
+- **[Minute 3: The Router](router.md)** - Understanding the nervous system of your app.
+- **[Minute 4: The Request](request.md)** - Reading the user's mind.
+- **[Minute 5: The Response](response.md)** - Speaking back with authority.
+- **[Minute 6: The Context](context.md)** - Managing state like a pro.
+- **[Minute 7: Schema & Docs](schema.md)** - Automatic validation and interactive docs.
+- **[Minute 8: The Earth](earth.md)** - Testing your world without leaving it.
+- **[Minute 9: Deployment](deployment.md)** - Going live.
+- **[Minute 10: Mastery](congrats.md)** - The final word.
 
 ---
 
-## Why Heaven?
-
-If you are tired of:
-- **FastAPI's** complex dependency injection and verbose schemas.
-- **Flask's** aging internal architecture and global variables.
-- **Django's** massive boilerplate and rigid structure.
-
-...then you belong in **Heaven**.
-
----
-
-## Your 10-Minute Journey to Mastery
-
-We believe you should be able to read the source code of your framework. Heaven is small enough that you *can*.
-
-- **Minute 1**: [Quickstart](quickstart.md) - From Zero to Hello World.
-- **Minute 2**: [The Request](request.md) - Understanding the incoming data.
-- **Minute 3**: [The Response](response.md) - Sending data back to the world.
-- **Minute 4**: [The Context](context.md) - Managing state across your app.
-- **Minute 5**: [The Router & Daemons](router.md) - Routing, Hooks, and Background Jobs.
-- **Minute 6**: [HTML & Assets](html.md) - Serving templates and static files.
-- **Minute 7**: [Drinking Coffee](coffee.md) - You're almost a master.
-- **Minute 8**: [Application Mounting](mount.md) - Building modular, large-scale apps.
-- **Minute 9**: [Auth & Validation](snippets.md) - Protecting your endpoints with `.BEFORE`.
-- **Minute 10**: [The Finish Line](congrats.md) - You are now a Heaven Master.
-
----
-
-## Get Started Now
+### Ready to Play?
 
 ```sh
 $ pip install heaven
@@ -43,10 +73,12 @@ $ pip install heaven
 ```python
 from heaven import App
 
+# For instance if this app could talk it might tell you:
+# Hello my name is `your-app` - I am a Python web application
+# I spend my time serving web requests and 
+# when I am free - I spend my time dreaming of becoming a chess engine
 app = App()
 
-app.GET('/', lambda req, res, ctx: res.renders('index.html'))
-
-# Run with any ASGI server
-# $ uvicorn app:app --port 5000 --reload
+# The move is yours.
+app.GET('/', lambda req, res, ctx: res.json({'message': 'Checkmate.'}))
 ```
