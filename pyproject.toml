@@ -13,8 +13,13 @@ uvicorn = ">=0.14"
 aiofiles = "^23.0.0"
 msgspec = ">=0.18.0"
 websockets = ">=12.0"
+rich = ">=13.0.0"
 
 [tool.poetry.dev-dependencies]
+
+
+[tool.poetry.scripts]
+heaven = "heaven.cli:main"
 
 
 [build-system]

@@ -58,6 +58,18 @@ class User(Schema):
 app.schema.POST('/user', expects=User, summary="Create User")
 app.DOCS('/docs')
 
+# Running your app
+Heaven comes with a beautiful, zero-config CLI.
+```bash
+pip install "heaven[rich]"
+
+# Auto-discovery & run with reload
+heaven fly
+
+# Visualize your API structure
+heaven routes
+```
+
 # Background Daemon (Native Periodic Tasks)
 async def pulse(app):
     print("Heartbeat...")
