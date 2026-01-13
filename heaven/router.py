@@ -528,7 +528,7 @@ class Router(object):
                             res.status = 500
                             res.body = f"Output Validation Error: {str(e)}".encode()
                         else:
-                            print(f"⚠️ Heaven Output Warning [{req.route}]: {str(e)}")
+                            print(f"Heaven Output Warning [{req.route}]: {str(e)}")
                             # Fallback to normal encoding
                             res.headers = "Content-Type", "application/json"
                             res.body = msgspec.json.encode(res.body)
@@ -644,6 +644,88 @@ class Router(object):
         try: value = self._buckets[key]
         except KeyError: return None
         else: return value
+
+
+    def plugin(self, plugin_instance):
+        """
+        Registers a plugin with the application.
+        The plugin instance must have an 'install' method which takes the app as the only argument.
+        """
+        if not hasattr(plugin_instance, 'install'):
+            raise ValueError(f"Plugin {plugin_instance.__class__.__name__} must have an 'install' method")
+        
+        plugin_instance.install(self)
+        return self
+
+    def cors(self, origins="*", methods="*", headers="*", expose_headers="*", max_age=None, allow_credentials=False):
+        """
+        Enables Cross-Origin Resource Sharing (CORS) for the application.
+        """
+        async def handle_cors(req, res, ctx):
+            # Implicitly handle OPTIONS requests
+            if req.method == "OPTIONS":
+                if allow_credentials: res.headers = "Access-Control-Allow-Credentials", "true"
+                if max_age: res.headers = "Access-Control-Max-Age", str(max_age)
+                res.headers = "Access-Control-Allow-Origin", origins
+                res.headers = "Access-Control-Allow-Methods", methods
+                res.headers = "Access-Control-Allow-Headers", headers
+                res.status = 200
+                res.body = b""
+                res.abort(b"")
+            
+            # Add headers to all other responses
+            if allow_credentials: res.headers = "Access-Control-Allow-Credentials", "true"
+            if expose_headers: res.headers = "Access-Control-Expose-Headers", expose_headers
+            res.headers = "Access-Control-Allow-Origin", origins
+            res.headers = "Access-Control-Allow-Methods", methods
+            res.headers = "Access-Control-Allow-Headers", headers
+
+        self.BEFORE("/*", handle_cors)
+        return self
+
+    def sessions(self, secret_key, cookie_name="session", max_age=3600):
+        """
+        Enables secure, signed cookie-based sessions.
+        """
+        from .security import SecureSerializer
+        serializer = SecureSerializer(secret_key)
+
+        async def load_session(req, res, ctx):
+            cookie = req.cookies.get(cookie_name)
+            data = {}
+            if cookie:
+                try: data = serializer.loads(cookie, max_age=max_age)
+                except: pass
+            
+            # attach to context and wrapping in Look so attributes can be accessed via dot notation
+            # e.g. ctx.session.user_id
+            ctx.keep('session', Look(data))
+            # track initial state to avoid unnecessary writes
+            ctx._initial_session = msgspec.json.encode(data)
+
+        async def save_session(req, res, ctx):
+            if not hasattr(ctx, 'session'): return
+            
+            # Check if session was modified
+            # We access _data directly because ctx.session is a Look wrapper around the dict
+            current_data = ctx.session._data if hasattr(ctx.session, '_data') else ctx.session
+            try:
+                current = msgspec.json.encode(current_data)
+            except: return
+
+            if current == getattr(ctx, '_initial_session', b''):
+                return
+
+            # Sign and Serialize
+            token = serializer.dumps(current_data)
+            
+            # Set cookie header
+            cookie_val = f"{cookie_name}={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age={max_age}"
+            res.headers = "Set-Cookie", cookie_val
+
+        self.BEFORE("/*", load_session)
+        self.AFTER("/*", save_session)
+        return self
 
     def listen(self, host='localhost', port='8701', debug=True, **kwargs): #pragma: nocover
         run(self, host=host, port=port, debug=debug, **kwargs)

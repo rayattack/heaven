@@ -1,0 +1,15 @@
+[tool.poetry]
+name = "heaven_aaa"
+version = "0.1.0"
+description = "High-performance AAA plugin for Heaven."
+authors = ["Your Name <your.email@example.com>"]
+readme = "README.md"
+packages = [{include = "heaven_aaa", from = "."}]
+
+[tool.poetry.dependencies]
+python = "^3.8"
+heaven = ">=0.1.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

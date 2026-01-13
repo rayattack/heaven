@@ -15,8 +15,19 @@ class Context():
     def unkeep(self, key):
         return self._data.pop(key, None)
 
+    __reserved = {'session', 'app', 'request', 'response', 'headers', 'cookies'}
+
     def __getattr__(self, key) -> Any:
         return self._data.get(key)
+    
+    def __setattr__(self, key: str, value: Any) -> None:
+        if key in self.__reserved:
+            raise AttributeError(f"Cannot overwrite reserved context key: '{key}'")
+        
+        if key.startswith('_'):
+            super().__setattr__(key, value)
+        else:
+            self._data[key] = value
 
 
 class Look(object):

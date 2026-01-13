@@ -112,7 +112,9 @@ class Request:
         if not self._headers:
             self._headers = {}
             for header in self._scope.get("headers"):
-                self._headers[header[0]] = header[1]
+                key = header[0].decode() if isinstance(header[0], bytes) else header[0]
+                value = header[1].decode() if isinstance(header[1], bytes) else header[1]
+                self._headers[key] = value
         return self._headers
 
     @property

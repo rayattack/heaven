@@ -36,6 +36,9 @@ nav:
   - Min. 8&colon; The Earth: earth.md
   - Min. 9&colon; Deployment: deployment.md
   - Min. 10&colon; Mastery: congrats.md
+  - Appendix&colon; Going to Production: production.md
+  - Advanced&colon; Plugins System: plugins.md
+  - Appendix&colon; Plugin Marketplace: marketplace.md
   - Appendix&colon; API Reference: api.md
   - Appendix&colon; Examples: examples.md
 

@@ -112,6 +112,27 @@ async def add_server_header(req, res, ctx):
 app.AFTER('/*', add_server_header)
 ```
 
+## Core Features: CORS & Sessions 🛡️
+
+Heaven comes with built-in support for CORS and secure sessions.
+
+### `app.cors()`
+Enable Cross-Origin Resource Sharing with a single line.
+
+```python
+app.cors(origins='https://myapp.com', methods=['GET', 'POST'])
+```
+
+### `app.sessions()`
+Enable signed, secure cookie-sessions.
+
+```python
+app.sessions(secret_key='keep-it-secret')
+
+# In your handler:
+# ctx.session.user_id = 123
+```
+
 ## Daemons: Background Tasks 👻
 
 Heaven has a built-in process manager for background tasks. No Celery required.

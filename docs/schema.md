@@ -2,17 +2,26 @@
 
 Heaven doesn't just run your code; it understands it. By using schemas, you get instant validation, auto-generated documentation, and type safety, all powered by the incredibly fast `msgspec`.
 
-## defining Schemas
+## Defining Schemas
 
-A schema is just a class that describes your data.
+A schema is a class that describes your data structure. Heaven exports `Schema` (a wrapper around `msgspec.Struct`) and `Constraints` (a wrapper around `msgspec.Meta`) to help you define validation rules.
 
 ```python
-from heaven import Schema # Alias for msgspec.Struct
+from typing import Annotated
+from heaven import Schema, Constraints
 
 class User(Schema):
+    # Standard type hinting
     id: int
     name: str
-    email: str
+    
+    # Use Constraints for validation
+    age: Annotated[int, Constraints(gt=18, lt=100)]
+    
+    # Use Schema.Field for default values and factories
+    metadata: dict = Schema.Field(default_factory=dict)
+    
+    # Regular default values work too
     is_admin: bool = False
 ```
 
@@ -79,6 +88,11 @@ app.schema.GET('/users/:id',
 
 - **`protect=True`**: Prevents data leaks. If your DB returns `password_hash` but your Schema doesn't have it, it won't be sent.
 - **`partial=True`**: Allows sending only a subset of fields (good for PATCH updates).
+
+---
+
+> [!NOTE]
+> **Under the Hood**: Heaven's `Schema` and `Constraints` are thin wrappers around the excellent [msgspec](https://jcristharif.com/msgspec/) library. We recommend checking out their documentation for advanced usage, performance tips, and more complex type definitions.
 
 ---
 

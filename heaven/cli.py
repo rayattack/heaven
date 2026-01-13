@@ -2,6 +2,7 @@ import os
 import sys
 import importlib
 import inspect
+import argparse
 from typing import Optional, Any
 import uvicorn
 import json
@@ -221,8 +222,6 @@ def schema(output: str = "swagger.json"):
     except Exception as e:
         console.print(f"[bold red]Error exporting schema:[/bold red] {e}")
         sys.exit(1)
-
-import argparse
 
 def main():
     parser = argparse.ArgumentParser(

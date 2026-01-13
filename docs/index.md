@@ -62,6 +62,9 @@ Because Heaven relies on standard Python and pure HTTP concepts, you don't need 
 - **[Minute 9: Deployment](deployment.md)** - Going live.
 - **[Minute 10: Mastery](congrats.md)** - The final word.
 
+### Advanced Topics
+- **[Plugins System](plugins.md)** - Extending Heaven with powerful integrations.
+
 ---
 
 ### Ready to Play?

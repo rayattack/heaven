@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "heaven_pg"
+version = "0.1.0"
+description = "High-performance PostgreSQL plugin for Heaven using asyncpg and msgspec."
+authors = ["Tersoo <ortserga@gmail.com>"]
+readme = "README.md"
+packages = [{include = "heaven_pg", from = "."}]
+
+[tool.poetry.dependencies]
+python = "^3.8"
+heaven = ">=0.1.0"
+asyncpg = "^0.29.0"
+msgspec = "^0.18.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
