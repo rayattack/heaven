@@ -1,3 +1,6 @@
+### 1.0.1
+- **Fix**: Automatically serialize `dict` and `list` responses to JSON even when no schema is defined, preventing ASGI errors.
+
 ### 1.0.0
 - **Core Features**: Added `app.cors()` and `app.sessions()` directly to the Router.
 - **Context DX**: Added support for dot-notation assignment on Context (`ctx.user = ...`).

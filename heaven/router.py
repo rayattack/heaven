@@ -560,6 +560,21 @@ class Router(object):
         if not self._baked: self._bake_schemas()
 
         response = await engine.handle(scope, receive, send, metadata, self)
+
+        # Auto-serialize dict/list bodies to JSON if not already handled
+        if isinstance(response.body, (dict, list)):
+            try:
+                response.body = msgspec.json.encode(response.body)
+                # Ensure Content-Type is set to application/json if missing
+                if not any(h[0].lower() == b'content-type' for h in response.headers):
+                    response.header('Content-Type', 'application/json')
+            except Exception as e:
+                print(f"JSON Serialization Error: {e}")
+                response.status = 500
+                response.body = b"Internal Server Error: JSON Serialization Failed"
+                # Clear headers and set content-type plain
+                response._headers = []
+                response.header('Content-Type', 'text/plain')
         if scope['type'] == 'http':
             await send({'type': 'http.response.start', 'headers': response.headers, 'status': response.status})
             if hasattr(response.body, '__aiter__'):
