@@ -425,7 +425,7 @@ class SchemaRegistry:
         self._router = router
         self._schemas = {}
 
-    def add(self, method: str, route: str, expects=None, returns=None, summary=None, description=None, protect=None, partial=None, strict=None, title=None):
+    def add(self, method: str, route: str, expects=None, returns=None, summary=None, description=None, protect=None, partial=None, strict=None, group=None):
         self._schemas[(method.upper(), route)] = {
             'expects': expects,
             'returns': returns,
@@ -434,7 +434,7 @@ class SchemaRegistry:
             'protect': protect,
             'partial': partial,
             'strict': strict,
-            'title': title
+            'group': group
         }
 
     def POST(self, route: str, **kwargs): self.add('POST', route, **kwargs)
@@ -445,7 +445,8 @@ class SchemaRegistry:
 
 
 class Router(object):
-    def __init__(self, configurator=None, protect_output=True, allow_partials=False, fail_on_output=True):
+    def __init__(self, configurator=None, protect_output=True, allow_partials=False, fail_on_output=True, debug=True):
+        self._debug = debug
         self.__ws = None
         self.finalized = False
         self.initializers = deque()
@@ -559,22 +560,39 @@ class Router(object):
 
         if not self._baked: self._bake_schemas()
 
-        response = await engine.handle(scope, receive, send, metadata, self)
+        try:
+            response = await engine.handle(scope, receive, send, metadata, self)
 
-        # Auto-serialize dict/list bodies to JSON if not already handled
-        if isinstance(response.body, (dict, list)):
-            try:
-                response.body = msgspec.json.encode(response.body)
-                # Ensure Content-Type is set to application/json if missing
-                if not any(h[0].lower() == b'content-type' for h in response.headers):
-                    response.header('Content-Type', 'application/json')
-            except Exception as e:
-                print(f"JSON Serialization Error: {e}")
-                response.status = 500
-                response.body = b"Internal Server Error: JSON Serialization Failed"
-                # Clear headers and set content-type plain
-                response._headers = []
-                response.header('Content-Type', 'text/plain')
+            # Auto-serialize dict/list bodies to JSON if not already handled
+            if isinstance(response.body, (dict, list)):
+                try:
+                    response.body = msgspec.json.encode(response.body)
+                    # Ensure Content-Type is set to application/json if missing
+                    if not any(h[0].lower() == b'content-type' for h in response.headers):
+                        response.header('Content-Type', 'application/json')
+                except Exception as e:
+                    print(f"JSON Serialization Error: {e}")
+                    response.status = 500
+                    response.body = b"Internal Server Error: JSON Serialization Failed"
+                    # Clear headers and set content-type plain
+                    response._headers = []
+                    response.header('Content-Type', 'text/plain')
+        except Exception as e:
+            if not self._debug: raise e
+            # Guardian Angel
+            from .response import _get_guardian_angel
+            # Create a dummy response/request context for the angel if needed
+            # But we need a valid request object for the template
+            # If handle failed, 'r' might not be available here, but we can reconstruct a basic one or use a dummy
+            # Actually, engine.handle creates the request. If it fails *inside* handle, we don't have reference to 'r' here
+            # unless we move the try/catch inside engine.handle or reconstruct.
+            # Best approach: catch inside engine.handle? No, that returns a response.
+            # Quickest valid object:
+            r = Request(scope, b'', receive, metadata, self)
+            c = Context(self)
+            response = Response(self, c, r)
+            _get_guardian_angel(response, e)
+        
         if scope['type'] == 'http':
             await send({'type': 'http.response.start', 'headers': response.headers, 'status': response.status})
             if hasattr(response.body, '__aiter__'):
@@ -937,9 +955,19 @@ class Router(object):
 
         for (method, route), meta in self.schema._schemas.items():
             path_item = paths.setdefault(route, {})
-            # Use provided title or empty string
-            summary = meta.get("summary") or meta.get("title") or ""
+            
+            # 1. Determine Group (Tag)
+            # Priority: Explicit 'group' > First meaningful URL segment > "Default"
+            group = meta.get("group")
+            if not group:
+                # heuristic: /users/:id/orders -> users
+                parts = [p for p in route.strip("/").split("/") if p and not p.startswith(":")]
+                group = parts[0].capitalize() if parts else "Default"
+            
+            # Use provided summary or empty string
+            summary = meta.get("summary") or ""
             op = {
+                "tags": [group],
                 "summary": summary,
                 "description": meta.get("description") or "",
                 "responses": {"200": {"description": "Successful Response"}}

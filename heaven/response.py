@@ -3,6 +3,8 @@ from http import HTTPStatus
 from os import path
 from typing import Any, AsyncGenerator, Optional, Union, TYPE_CHECKING
 import msgspec
+import traceback
+import sys
 
 from functools import singledispatch, update_wrapper
 
@@ -47,10 +49,11 @@ def _(payload):
         return payload
     return payload
 
-def _get_guardian_angel(res: 'Response', error: str, snippet: str):
+def _get_guardian_angel(res: 'Response', exc: Exception):
     res.headers = 'Content-Type', 'text/html'
     res.status = HTTPStatus.INTERNAL_SERVER_ERROR
-    res.body = get_guardian_angel_html(error, snippet)
+    tb = traceback.format_exc()
+    res.body = get_guardian_angel_html(res._req, exc, tb)
 
 
 class Response():
@@ -172,10 +175,10 @@ class Response():
         self.headers = 'content-type', 'text/html; charset=utf-8'
         # if self._mounted_from_application: templater = self._mounted_from_application._templater or templater
         if not templater:
-            return _get_guardian_angel(self, 'You did not enable templating', NO_TEMPLATING)
+            return _get_guardian_angel(self, ValueError('Templating not enabled. Call app.TEMPLATES() first.'))
 
         if not templater.is_async:
-            return _get_guardian_angel(self, 'Trying to use Sync HTML Renderer to render HTML Async', ASYNC_RENDER)
+            return _get_guardian_angel(self, RuntimeError('Trying to use Sync HTML Renderer to render HTML Async'))
 
         template = templater.get_template(name)
         self.body = await template.render_async({'ctx': self._ctx, 'res': self, 'req': self._req, **contexts})
@@ -186,10 +189,10 @@ class Response():
         templater = self._app._templater
         self.headers = 'content-type', 'text/html; charset=utf-8'
         if not templater:
-            return _get_guardian_angel(self, 'You did not enable templating', NO_TEMPLATING)
+            return _get_guardian_angel(self, ValueError('Templating not enabled. Call app.TEMPLATES() first.'))
 
         if templater.is_async:
-            return _get_guardian_angel(self, 'Trying to use Async HTML Renderer to render Sync HTML', SYNC_RENDER)
+            return _get_guardian_angel(self, RuntimeError('Trying to use Async HTML Renderer to render Sync HTML'))
         template = templater.get_template(name)
         self.body = template.render({'ctx': self._ctx, 'res': self, 'req': self._req, **contexts})
         return self

@@ -1,3 +1,17 @@
+### 1.2.0
+- **Feature**: **Schema Grouping**. Introduced intuitive grouping for OpenAPI documentation.
+    - **Auto-Grouping**: Endpoints are automatically tagged based on their URL path (e.g., `/users/:id` -> `Users`).
+    - **Explicit Grouping**: Added `group` parameter to schema definitions to override auto-grouping (e.g., `group='Orders'`).
+- **Cleanup**: **Metadata API**.
+    - Removed `title` parameter from schema definitions to reduce redundancy.
+    - Standardized on `summary` (short description) and `description` (long markdown).
+
+### 1.1.0
+- **Feature**: **Guardian Angel 2.0**. A completely redesigned global proper debug page.
+    - Catches **all** unhandled exceptions when `debug=True`.
+    - Displays rich traceback, request details (headers, params, IP), and environment info.
+    - Zero dependencies (removed Bulma CDN), works offline with beautiful dark mode UI.
+
 ### 1.0.1
 - **Fix**: Automatically serialize `dict` and `list` responses to JSON even when no schema is defined, preventing ASGI errors.
 
