@@ -1,3 +1,11 @@
+### 1.3.0
+- **Feature**: **Subdomain Schemas**. Full support for defining schemas specific to subdomains.
+    - **Proxy API**: New `app.subdomain('name')` API that returns a context-aware proxy.
+    - **Isolation**: `app.subdomain('api').schema.POST(...)` registers schemas specifically for that subdomain, preventing collisions with main routes.
+    - **Hooks**: Schema baking now respects subdomain boundaries (`BEFORE`/`AFTER` hooks are registered to the correct subdomain).
+- **Fix**: **Pytest Compatibility**. Resolved issues with `async def` test discovery and global `mock` side-effects that were breaking test suites.
+- **Fix**: **Crash Prevention**. hardened `_string_to_function_handler` against non-string inputs (like Mocks/Objects), resolving crashes during complex testing scenarios.
+
 ### 1.2.2
 - **Feature**: **String Schemas**. `router.schema` methods (e.g. `POST`, `GET`) now accept string paths for `expects` and `returns` arguments.
     - **Lazy Loading**: You can now pass schemas as strings (e.g. `expects='my.module.Schema'`) to avoid circular imports and keep code clean, matching the behavior of route handlers.

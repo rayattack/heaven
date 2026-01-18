@@ -22,7 +22,7 @@ def MethodDispatch(method):
     decorated = singledispatch(method)
     def decorator(*args, **kwargs):
         return decorated.dispatch(args[1].__class__)(*args, **kwargs)
-    decorator.register = decorated.register
+    decorator.register = decorated.register # type: ignore
     update_wrapper(decorator, method)
     return decorator
 
@@ -75,13 +75,13 @@ class Response():
         self._abort = True
         self._body = payload
 
-    @abort.register(str)
+    @abort.register(str) # type: ignore
     def _(self, payload: str):
         self._abort = True
         self._body = payload.encode()
 
-    @abort.register(int)
-    @abort.register(float)
+    @abort.register(int) # type: ignore
+    @abort.register(float) # type: ignore
     def _(self, payload):
         self._abort = True
         self._body = f'{payload}'.encode()
@@ -178,10 +178,12 @@ class Response():
         self.headers = 'content-type', 'text/html; charset=utf-8'
         # if self._mounted_from_application: templater = self._mounted_from_application._templater or templater
         if not templater:
-            return _get_guardian_angel(self, ValueError('Templating not enabled. Call app.TEMPLATES() first.'))
+            _get_guardian_angel(self, ValueError('Templating not enabled. Call app.TEMPLATES() first.'))
+            return self
 
         if not templater.is_async:
-            return _get_guardian_angel(self, RuntimeError('Trying to use Sync HTML Renderer to render HTML Async'))
+            _get_guardian_angel(self, RuntimeError('Trying to use Sync HTML Renderer to render HTML Async'))
+            return self
 
         template = templater.get_template(name)
         self.body = await template.render_async({'ctx': self._ctx, 'res': self, 'req': self._req, **contexts})
@@ -192,10 +194,12 @@ class Response():
         templater = self._app._templater
         self.headers = 'content-type', 'text/html; charset=utf-8'
         if not templater:
-            return _get_guardian_angel(self, ValueError('Templating not enabled. Call app.TEMPLATES() first.'))
+            _get_guardian_angel(self, ValueError('Templating not enabled. Call app.TEMPLATES() first.'))
+            return self
 
         if templater.is_async:
-            return _get_guardian_angel(self, RuntimeError('Trying to use Async HTML Renderer to render Sync HTML'))
+            _get_guardian_angel(self, RuntimeError('Trying to use Async HTML Renderer to render Sync HTML'))
+            return self
         template = templater.get_template(name)
         self.body = template.render({'ctx': self._ctx, 'res': self, 'req': self._req, **contexts})
         return self
