@@ -7,4 +7,4 @@ from .schema import Schema, Constraints
 from .context import Context
 
 
-__version__ = '1.2.0'
+__version__ = '1.2.1'

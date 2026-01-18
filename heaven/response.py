@@ -113,6 +113,9 @@ class Response():
         return self.body.decode()
 
     def header(self, key, val) -> 'Response':
+        if isinstance(val, (list, tuple, set)): val = ', '.join(map(str, val))
+        else: val = str(val)
+
         _encode = lambda k: k.encode('utf-8') if isinstance(k, str) else k
         value = _encode(key), _encode(val)
         self._headers.append(value)

@@ -1,3 +1,11 @@
+### 1.2.1
+- **Feature**: **Smart CORS**. Re-architected `app.cors()` to accept flexible configurations.
+    - **Kwargs Support**: Now accepts configuration via kwargs (e.g. `maxAge=3600`) with robust key normalization (handles `max-age`, `MAX_AGE`, `maxage`).
+    - **Origins Array**: Fully supports passing an array of origins (e.g. `origin=['http://a.com', 'http://b.com']`). Automatically reflects the matching origin or `null` while setting `Vary: Origin`.
+    - **Auto-Coercion**: Response headers (`methods`, `headers`) passed as lists are automatically joined into spec-compliant strings.
+- **Security/Stability**: **Response Hardening**.
+    - `Response.header()` now automatically coerces all values to string and joins list/tuple inputs. This prevents server crashes when developers accidentally pass non-string types to headers.
+
 ### 1.2.0
 - **Feature**: **Schema Grouping**. Introduced intuitive grouping for OpenAPI documentation.
     - **Auto-Grouping**: Endpoints are automatically tagged based on their URL path (e.g., `/users/:id` -> `Users`).

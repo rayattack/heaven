@@ -690,28 +690,67 @@ class Router(object):
         plugin_instance.install(self)
         return self
 
-    def cors(self, origins="*", methods="*", headers="*", expose_headers="*", max_age=None, allow_credentials=False):
+    def cors(self, handler=None, **kwargs):
         """
         Enables Cross-Origin Resource Sharing (CORS) for the application.
+        Accepts a handler function or configuration via kwargs.
         """
+        if handler and callable(handler):
+            self.BEFORE("/*", handler)
+            return self
+
+        # Smart key mapping
+        def get_value(key, default=None):
+            # Normalization helper: remove - and _ and lowercase
+            normalize = lambda k: k.lower().replace('-', '').replace('_', '')
+            target = normalize(key)
+            
+            # Additional semantic aliases
+            aliases = {
+                'origin': ['origins'],
+                'methods': ['method', 'allowmethods', 'allowedmethods'],
+                'headers': ['header', 'allowheaders', 'allowedheaders'],
+                'exposeheaders': ['exposeheader', 'expose', 'allowedexposeheaders'],
+                'credentials': ['allowcredentials', 'allowcreds', 'allowedcredentials'],
+                'maxage': ['maxaage', 'maxage'],
+            }
+            
+            targets = [target] + aliases.get(target, [])
+            for k, v in kwargs.items():
+                if normalize(k) in targets: return v
+            return default
+
+        origin_val = get_value('origin', '*')
+        methods_val = get_value('methods', '*')
+        headers_val = get_value('headers', '*')
+        expose_val = get_value('expose_headers', '*')
+        cred_val = get_value('credentials', False)
+        max_age_val = get_value('max_age')
+
         async def handle_cors(req, res, ctx):
-            # Implicitly handle OPTIONS requests
+            allow_origin = origin_val
+            if isinstance(origin_val, (list, tuple, set)):
+                req_origin = req.headers.get("origin")
+                if req_origin in origin_val:
+                    allow_origin = req_origin
+                    res.headers = "Vary", "Origin"
+                else: allow_origin = "null"
+            
+            res.headers = "Access-Control-Allow-Origin", allow_origin
+            if cred_val: res.headers = "Access-Control-Allow-Credentials", "true"
+            if expose_val: res.headers = "Access-Control-Expose-Headers", expose_val
+            
             if req.method == "OPTIONS":
-                if allow_credentials: res.headers = "Access-Control-Allow-Credentials", "true"
-                if max_age: res.headers = "Access-Control-Max-Age", str(max_age)
-                res.headers = "Access-Control-Allow-Origin", origins
-                res.headers = "Access-Control-Allow-Methods", methods
-                res.headers = "Access-Control-Allow-Headers", headers
+                if max_age_val: res.headers = "Access-Control-Max-Age", max_age_val
+                res.headers = "Access-Control-Allow-Methods", methods_val
+                res.headers = "Access-Control-Allow-Headers", headers_val
                 res.status = 200
                 res.body = b""
                 res.abort(b"")
-            
-            # Add headers to all other responses
-            if allow_credentials: res.headers = "Access-Control-Allow-Credentials", "true"
-            if expose_headers: res.headers = "Access-Control-Expose-Headers", expose_headers
-            res.headers = "Access-Control-Allow-Origin", origins
-            res.headers = "Access-Control-Allow-Methods", methods
-            res.headers = "Access-Control-Allow-Headers", headers
+            else:
+                # Some clients require these on normal requests too
+                res.headers = "Access-Control-Allow-Methods", methods_val
+                res.headers = "Access-Control-Allow-Headers", headers_val
 
         self.BEFORE("/*", handle_cors)
         return self
