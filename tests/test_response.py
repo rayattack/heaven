@@ -77,7 +77,7 @@ def test_response_body_encodings():
 
 def test_get_guardian_angel_html():
     res = Response(app=router, context=context, request=request)
-    _get_guardian_angel(res, 'some error', 'some snippet')
+    _get_guardian_angel(res, ValueError('some error'))
     assert res.headers == [(b'Content-Type', b'text/html')]
     assert res.status == status.INTERNAL_SERVER_ERROR
     assert isinstance(res.body, bytes)

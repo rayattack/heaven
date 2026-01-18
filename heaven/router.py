@@ -88,7 +88,7 @@ def _set_content_type(req: Request, res: Response):
 
 
 def _string_to_function_handler(handler: str):
-    if isinstance(handler, str):
+    if type(handler) is str and '.' in handler:
         module_name, function_name = handler.rsplit('.', 1)
         module = import_module(module_name)
         handler = getattr(module, function_name)
@@ -425,8 +425,8 @@ class SchemaRegistry:
         self._router = router
         self._schemas = {}
 
-    def add(self, method: str, route: str, expects=None, returns=None, summary=None, description=None, protect=None, partial=None, strict=None, group=None):
-        self._schemas[(method.upper(), route)] = {
+    def add(self, method: str, route: str, expects=None, returns=None, summary=None, description=None, protect=None, partial=None, strict=None, group=None, subdomain=DEFAULT):
+        self._schemas[(method.upper(), route, subdomain)] = {
             'expects': _string_to_function_handler(expects),
             'returns': _string_to_function_handler(returns),
             'summary': summary,
@@ -442,6 +442,46 @@ class SchemaRegistry:
     def PUT(self, route: str, **kwargs): self.add('PUT', route, **kwargs)
     def DELETE(self, route: str, **kwargs): self.add('DELETE', route, **kwargs)
     def PATCH(self, route: str, **kwargs): self.add('PATCH', route, **kwargs)
+
+
+class BoundSchemaRegistry:
+    def __init__(self, registry: SchemaRegistry, subdomain: str):
+        self.registry = registry
+        self.subdomain = subdomain
+
+    def POST(self, route: str, **kwargs): self.registry.add('POST', route, subdomain=self.subdomain, **kwargs)
+    def GET(self, route: str, **kwargs): self.registry.add('GET', route, subdomain=self.subdomain, **kwargs)
+    def PUT(self, route: str, **kwargs): self.registry.add('PUT', route, subdomain=self.subdomain, **kwargs)
+    def DELETE(self, route: str, **kwargs): self.registry.add('DELETE', route, subdomain=self.subdomain, **kwargs)
+    def PATCH(self, route: str, **kwargs): self.registry.add('PATCH', route, subdomain=self.subdomain, **kwargs)
+
+
+class SubdomainContext:
+    def __init__(self, app: 'Router', name: str):
+        self.app = app
+        self.name = name
+
+    @property
+    def schema(self):
+        return BoundSchemaRegistry(self.app.schema, self.name)
+    
+    def AFTER(self, route: str, handler: Handler): self.app.AFTER(route, handler, subdomain=self.name)
+    def BEFORE(self, route: str, handler: Handler): self.app.BEFORE(route, handler, subdomain=self.name)
+    def CONNECT(self, route: str, handler: Handler): self.app.CONNECT(route, handler, subdomain=self.name)
+    def DELETE(self, route: str, handler: Handler): self.app.DELETE(route, handler, subdomain=self.name)
+    def GET(self, route: str, handler: Handler): self.app.GET(route, handler, subdomain=self.name)
+    def HTTP(self, route: str, handler: Handler): self.app.HTTP(route, handler, subdomain=self.name)
+    def OPTIONS(self, route: str, handler: Handler): self.app.OPTIONS(route, handler, subdomain=self.name)
+    def PATCH(self, route: str, handler: Handler): self.app.PATCH(route, handler, subdomain=self.name)
+    def POST(self, route: str, handler: Handler): self.app.POST(route, handler, subdomain=self.name)
+    def PUT(self, route: str, handler: Handler): self.app.PUT(route, handler, subdomain=self.name)
+    def TRACE(self, route: str, handler: Handler): self.app.TRACE(route, handler, subdomain=self.name)
+    def SOCKET(self, route: str, handler: Handler): self.app.SOCKET(route, handler, subdomain=self.name)
+    def WEBSOCKET(self, route: str, handler: Handler): self.app.WEBSOCKET(route, handler, subdomain=self.name)
+    def WS(self, route: str, handler: Handler): self.app.WS(route, handler, subdomain=self.name)
+    def assets(self, folder: str, route=None, relative_to=None): self.app.ASSETS(folder, route, subdomain=self.name, relative_to=relative_to)
+    def abettor(self, method: str, route: str, handler: Handler): self.app.abettor(method, route, handler, subdomain=self.name)
+    def doc(self, route: str, title="API Reference", version="0.0.1"): self.app.DOCS(route, title, version, subdomain=self.name)
 
 
 class Router(object):
@@ -478,7 +518,7 @@ class Router(object):
 
     def _bake_schemas(self):
         if self._baked: return
-        for (method, route), meta in self.schema._schemas.items():
+        for (method, route, subdomain), meta in self.schema._schemas.items():
             expects = meta.get('expects')
             if expects and hasattr(expects, '__struct_fields__'):
                 decoder = msgspec.json.Decoder(expects)
@@ -489,7 +529,7 @@ class Router(object):
                         res.status = 422
                         res.body = str(e).encode()
                         res.abort(res.body)
-                self.BEFORE(route, validate_hook)
+                self.BEFORE(route, validate_hook, subdomain=subdomain)
             
             returns = meta.get('returns')
             if returns:
@@ -534,7 +574,7 @@ class Router(object):
                             res.headers = "Content-Type", "application/json"
                             res.body = msgspec.json.encode(res.body)
                 
-                self.AFTER(route, output_hook)
+                self.AFTER(route, output_hook, subdomain=subdomain)
         self._baked = True
 
     async def __call__(self, scope, receive, send):
@@ -803,8 +843,9 @@ class Router(object):
         run(self, host=host, port=port, debug=debug, **kwargs)
 
     def subdomain(self, subdomain: str):
-        if self.subdomains.get(subdomain): return
-        self.subdomains[subdomain] = Routes()
+        if not self.subdomains.get(subdomain):
+            self.subdomains[subdomain] = Routes()
+        return SubdomainContext(self, subdomain)
 
     def mount(self, router: 'Router', isolated = True):
         if not isolated:
@@ -992,7 +1033,7 @@ class Router(object):
             components["schemas"][name] = js
             return name
 
-        for (method, route), meta in self.schema._schemas.items():
+        for (method, route, subdomain), meta in self.schema._schemas.items():
             path_item = paths.setdefault(route, {})
             
             # 1. Determine Group (Tag)
