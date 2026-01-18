@@ -1,4 +1,4 @@
-# Minute 5: The Response 🗣️
+# The Response 🗣️
 
 You have listened. Now you must speak. The `Response` object gives you the tools to reply with JSON, HTML, Files, or even silence.
 
@@ -87,4 +87,46 @@ res.body = "Email queued!"
 
 ---
 
-**Next:** How do we share data between the router, the request, and the response? On to **[Minute 6: The Context](context.md)**.
+## Streaming & Files
+
+Heaven makes it easy to stream large responses or serve files without blocking the server event loop.
+
+### `res.stream(generator)`
+
+Stream data chunk-by-chunk to the client. This is perfect for large datasets or real-time updates.
+
+```python
+async def large_report(req, res, ctx):
+    async def generate():
+        yield "Start of report\n"
+        # Simulate heavy work
+        for i in range(100):
+            yield f"Row {i}\n"
+    
+    # Automatically sets Transfer-Encoding: chunked
+    res.stream(generate())
+```
+
+#### Server-Sent Events (SSE)
+
+You can also create an SSE stream easily:
+
+```python
+res.stream(event_generator(), sse=True)
+```
+
+### `res.file(path)`
+
+Serve a file from the disk. Heaven uses `aiofiles` to stream the file efficiently, so even sending a 10GB file won't spike your RAM or block other requests.
+
+```python
+# Serve inline (e.g. an image)
+res.file('/var/www/image.png')
+
+# Force download
+res.file('/var/www/report.pdf', filename='Annual_Report.pdf')
+```
+
+---
+
+**Next:** How do we share data between the router, the request, and the response? On to **[The Context](context.md)**.

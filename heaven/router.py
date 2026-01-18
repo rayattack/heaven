@@ -11,6 +11,9 @@ import json
 import mimetypes
 import msgspec
 from aiofiles import open as async_open_file
+import time
+import asyncio
+import logging
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from uvicorn import run
 
@@ -50,12 +53,13 @@ from .errors import AbortException, SubdomainError, UrlDuplicateError, UrlError
 
 methods = ['get', 'post', 'put', 'delete', 'connect', 'head', 'options', 'patch']
 
-Handler = Union[Callable[[Request, Response, Context], object], str]
+Handles = Callable[[Request, Response, Context], object]
+Handler = Union[Handles, str]
 
 SEPARATOR = INDEX = "/"
 
 
-def _closure_mounted_application(handler: Handler, mounted: 'Router'):
+def _closure_mounted_application(handler: Handles, mounted: 'Router'):
     async def delegate(req: Request, res: Response, ctx: Context):
         req.mounted = mounted
         res._mounted_from_application = mounted
@@ -87,8 +91,8 @@ def _set_content_type(req: Request, res: Response):
         res.headers = 'Content-Type', mime_type
 
 
-def _string_to_function_handler(handler: str):
-    if type(handler) is str and '.' in handler:
+def _string_to_function_handler(handler: Handler):
+    if isinstance(handler, str) and '.' in handler:
         module_name, function_name = handler.rsplit('.', 1)
         module = import_module(module_name)
         handler = getattr(module, function_name)
@@ -132,8 +136,9 @@ class Route(object):
         route_at_deviation = '/'.join(routes)
         parameters = []
 
-        # grand father deviation point in case we are dealing from the start with a catch all route
-        deviation_point: Route = node.children.get('*')
+        # grand father deviation point in case
+        # we are dealing from the start with a catch all route
+        deviation_point: Union[Route, None] = node.children.get('*')
 
         while routes:
             route = routes.popleft()
@@ -182,10 +187,11 @@ class Route(object):
 
 
         # time to process what parameters we saw
-        for parameter in parameters:
-            r.params = parameter.resolve(node.route)
+        for parameter in parameters: r.params = parameter.resolve(node.route)
+
         # default node.route is None and handler as well
-        # so this returns None if no route encountered or what was encountered in while block above
+        # so this returns None if no route encountered or what
+        # was encountered in while block above
         r.qh = node.queryhint
         return node.route, node.handler
 
@@ -387,7 +393,19 @@ class Routes(object):
                 self.cache[method][route] = None
 
     async def xhooks(self, hookstore, matched, r: Request, w: Response, c: Context):
-        hooks = set(hookstore.get(matched, []))
+        # We use a list to preserve order and a set for O(1) uniqueness checks
+        hooks = []
+        seen = set()
+
+        def add_unique(new_hooks):
+             for hook in new_hooks:
+                 if hook not in seen:
+                     seen.add(hook)
+                     hooks.append(hook)
+
+        # 1. Exact match hooks
+        add_unique(hookstore.get(matched, []))
+
         """Here we are getting any and or all hooks that match the url verbatim as provided
         i.e. /url/:id or /url/:id/nested
         """
@@ -396,7 +414,9 @@ class Routes(object):
         for position, part in enumerate(parts):
             joinedparts = "/".join(parts[:position])
             _ = '' if position == 0 else SEPARATOR
-            hooks.update(hookstore.get(f'/{joinedparts}{_}*', []))
+            # 2. Wildcard hooks from parents
+            add_unique(hookstore.get(f'/{joinedparts}{_}*', []))
+        
         """Next we clean the matched url of any '/' surpluses before splitting it into a list
         for enumeration.
         Enumeration helps us gradually use the current enumeration position/offset/index to
@@ -427,8 +447,8 @@ class SchemaRegistry:
 
     def add(self, method: str, route: str, expects=None, returns=None, summary=None, description=None, protect=None, partial=None, strict=None, group=None, subdomain=DEFAULT):
         self._schemas[(method.upper(), route, subdomain)] = {
-            'expects': _string_to_function_handler(expects),
-            'returns': _string_to_function_handler(returns),
+            'expects': _string_to_function_handler(expects) if expects else None,
+            'returns': _string_to_function_handler(returns) if returns else None,
             'summary': summary,
             'description': description,
             'protect': protect,
@@ -485,7 +505,7 @@ class SubdomainContext:
 
 
 class Router(object):
-    def __init__(self, configurator=None, protect_output=True, allow_partials=False, fail_on_output=True, debug=True):
+    def __init__(self, configurator=None, protect_output=True, allow_partials=False, fail_on_output=True, debug=True, monitor: Union[float, None] = None):
         self._debug = debug
         self.__ws = None
         self.finalized = False
@@ -504,6 +524,16 @@ class Router(object):
         self._protect_output = protect_output
         self._allow_partials = allow_partials
         self._fail_on_output = fail_on_output
+        
+        if monitor and monitor > 0:
+            logger = logging.getLogger("heaven.monitor")
+            async def _watchdog(app):
+                start = time.time()
+                await asyncio.sleep(monitor)
+                lag = time.time() - start - monitor
+                if lag > monitor: logger.warning(f"Event Loop Blocked! Lag: {lag:.4f}s")
+                return monitor
+            self.__daemons.append(_watchdog)
 
     @property
     def _(self):
@@ -594,14 +624,13 @@ class Router(object):
         metadata = preprocessor(scope)
         subdomain = metadata[0]
         wildcard_engine = self.subdomains.get(WILDCARD)
-        engine = self.subdomains.get(subdomain)
+        engine: Union[Routes, None] = self.subdomains.get(subdomain)
         if not engine:
             engine = wildcard_engine if wildcard_engine else self.subdomains.get(DEFAULT)
-
         if not self._baked: self._bake_schemas()
 
         try:
-            response = await engine.handle(scope, receive, send, metadata, self)
+            response = await engine.handle(scope, receive, send, metadata, self)  # type: ignore
 
             # Auto-serialize dict/list bodies to JSON if not already handled
             if isinstance(response.body, (dict, list)):
@@ -869,7 +898,8 @@ class Router(object):
             for after in engine.afters:
                 self.subdomains[subdomain].afters[after] = [*engine.afters[after], *self.subdomains[subdomain].afters.get(after, [])]
             for before in engine.befores:
-                self.subdomains[subdomain].befores[before] = [*engine.befores[before], *self.subdomains[subdomain].befores.get(before, [])]
+                # Parent hooks (self) come BEFORE Child hooks (engine) for .BEFORE
+                self.subdomains[subdomain].befores[before] = [*self.subdomains[subdomain].befores.get(before, []), *engine.befores[before]]
 
     def websocket(self):
         # only if app is already running

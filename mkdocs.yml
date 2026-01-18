@@ -24,20 +24,26 @@ plugins:
       minify_html: true
 
 nav:
-#  - Heaven v0.6.11: index.md
+  - Heaven v1.3.1: index.md
   - Intro: index.md
-  - Min. 1&colon; The Beginning: quickstart.md
-  - Min. 2&colon; The Command Line: cli.md
-  - Min. 3&colon; The Router: router.md
-  - Min. 4&colon; The Request: request.md
-  - Min. 5&colon; The Response: response.md
-  - Min. 6&colon; The Context: context.md
-  - Min. 7&colon; Schema & Docs: schema.md
-  - Min. 8&colon; The Earth: earth.md
-  - Min. 9&colon; Deployment: deployment.md
-  - Min. 10&colon; Mastery: congrats.md
+  - Min 01-02&colon; The Beginning: quickstart.md
+  - Min 03-04&colon; The Command Line: cli.md
+  - Min 05-06&colon; The Router: router.md
+  - Min 07-08&colon; Subdomains: subdomains.md
+  - Min 09-10&colon; The Request: request.md
+  - Min 11-12&colon; The Response: response.md
+  - Min 13-14&colon; The Context: context.md
+  - Min 15-16&colon; HTML & Assets: html.md
+  - Min 17-18&colon; Interceptors: hooks.md
+  - Min 19-20&colon; Schemas: schema.md
+  - Min 21-22&colon; API Docs: openapi.md
+  - Min 23-24&colon; Testing (Earth): earth.md
+  - Min 25-26&colon; Background Tasks: daemons.md
+  - Min 27-28&colon; Security & Plugins: security.md
+  - Min 29-30&colon; Deployment: deployment.md
+  - That's it&colon; Congrats: congrats.md
   - Appendix&colon; Going to Production: production.md
-  - Advanced&colon; Plugins System: plugins.md
+  - Appendix&colon; Plugins System: plugins.md
   - Appendix&colon; Plugin Marketplace: marketplace.md
   - Appendix&colon; API Reference: api.md
   - Appendix&colon; Examples: examples.md

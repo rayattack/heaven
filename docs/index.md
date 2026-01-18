@@ -1,15 +1,17 @@
 # The Developer Experience Dream
 
+## - To **Master** A Web Framework In 30 Minutes Or Less
+
 **Heaven** was born from a simple dream: *You shouldn't need a PhD in web development to build an enterprise web application*
 
-Web development is like a **chess board**. Many frameworks expect you to be [Magnus Carlsen](https://en.wikipedia.org/wiki/Magnus_Carlsen) before you can play (create) a **legendary** game (web application).
+Web development is like a **chess board**. Many frameworks expect you to be at the level of [Magnus Carlsen](https://en.wikipedia.org/wiki/Magnus_Carlsen) before you can play (create) a **legendary** game (web application).
 
-Most modern frameworks are like a crowded room shouting suggestions at you. They try to be everything for everyone. They bury you in layers of abstraction until you forget what HTTP looks like.
+Other frameworks are like a crowded room shouting suggestions at you. They try to be everything for everyone. They bury you in layers of abstraction until you forget what HTTP looks like.
 
 **Heaven is different.**
 
 It gives you raw, unadulterated power and gets out of your way immediately with a syntax designed for
-an **average developer to understand in 10 minutes** or less.
+an **average developer to understand in 30 minutes** or less.
 
 -------
 
@@ -47,20 +49,25 @@ A framework that **You won't spend months learning**, cos life is too short - an
 ... then you belong in **Heaven**.
 
 
-## Your 10-Minute Path to Mastery
+## Your 30-Minute Path to Mastery
 
-Because Heaven relies on standard Python and pure HTTP concepts, you don't need a 500-page manual. You need 10 minutes.
+Because Heaven relies on standard Python and pure HTTP concepts, you don't need a 500-page manual. You need 30 minutes.
 
-- **[Minute 1: The Beginning](quickstart.md)** - From Zero to Hello World.
-- **[Minute 2: The Command Line](cli.md)** - Controlling the skies with `fly` and `run`.
-- **[Minute 3: The Router](router.md)** - Understanding the nervous system of your app.
-- **[Minute 4: The Request](request.md)** - Reading the user's mind.
-- **[Minute 5: The Response](response.md)** - Speaking back with authority.
-- **[Minute 6: The Context](context.md)** - Managing state like a pro.
-- **[Minute 7: Schema & Docs](schema.md)** - Automatic validation and interactive docs.
-- **[Minute 8: The Earth](earth.md)** - Testing your world without leaving it.
-- **[Minute 9: Deployment](deployment.md)** - Going live.
-- **[Minute 10: Mastery](congrats.md)** - The final word.
+- **[Min 01-02: The Beginning](quickstart.md)** - From Zero to Hello World.
+- **[Min 03-04: The Command Line](cli.md)** - Controlling the skies with `fly` and `run`.
+- **[Min 05-06: The Router](router.md)** - Understanding routes and dispatch.
+- **[Min 07-08: Subdomains & Mounts](subdomains.md)** - Multi-tenancy and architecture.
+- **[Min 09-10: The Request](request.md)** - Reading the user's mind.
+- **[Min 11-12: The Response](response.md)** - Speaking back with authority.
+- **[Min 13-14: Templating & Files](html.md)** - Rendering views and serving static assets.
+- **[Min 15-16: The Context](context.md)** - Managing state like a pro.
+- **[Min 17-18: Hooks & Middleware](hooks.md)** - Intercepting the pipeline power.
+- **[Min 19-20: Schemas & Validation](schema.md)** - Bulletproof data validation.
+- **[Min 21-22: Auto-Documentation](openapi.md)** - Free Swagger UI.
+- **[Min 23-24: Testing (Earth)](earth.md)** - Testing your world without leaving it.
+- **[Min 25-26: Background Tasks](daemons.md)** - Native background workers.
+- **[Min 27-28: Security & Plugins](security.md)** - Signing, hashing and extending.
+- **[Min 29-30: Mastery & Deployment](deployment.md)** - The final word and going live.
 
 ### Advanced Topics
 - **[Plugins System](plugins.md)** - Extending Heaven with powerful integrations.

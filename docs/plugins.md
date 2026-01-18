@@ -64,8 +64,8 @@ class PostgresPlugin:
         # with zero overhead for the end-user
         async def inject_db(req, res, ctx):
             # This makes 'ctx.db' or 'ctx.pg' available
-            setattr(ctx, self.name, self)
-            
+            ctx.keep(self.name, self)
+
         app.BEFORE("/*", inject_db)
 
     async def startup(self, app):

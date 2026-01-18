@@ -79,6 +79,8 @@ def routes(app_path: Optional[str] = None):
     """Visualize all registered routes."""
     if not app_path:
         app_path = find_app()
+    else:
+        sys.path.insert(0, os.getcwd())
         
     if not app_path:
         console.print("[bold red]Error:[/bold red] Could not find an app to inspect.")
@@ -120,9 +122,13 @@ def routes(app_path: Optional[str] = None):
     with console.pager(styles=True):
         console.print(table)
  
-def handlers(target_path: Optional[str] = None):
+def handlers(target_path: Optional[str] = None, app_path: Optional[str] = None):
     """Deep inspection of handlers, showing source code if a path is provided."""
-    app_path = find_app()
+    if not app_path:
+        app_path = find_app()
+    else:
+        sys.path.insert(0, os.getcwd())
+    
     if not app_path:
         console.print("[bold red]Error:[/bold red] Could not find an app.")
         sys.exit(1)
@@ -154,20 +160,21 @@ def handlers(target_path: Optional[str] = None):
                         original_handler = _deep_unwrap(handler)
                         source = inspect.getsource(original_handler)
                         file = inspect.getsourcefile(original_handler)
-                        line = inspect.getsourcelines(original_handler)[1]
+                        if file: file = f"{file}:{inspect.getsourcelines(original_handler)[1]}"
+                        else: file = "unknown"
                         
                         syntax = Syntax(
                             source, 
                             "python", 
                             theme="monokai", 
                             line_numbers=True, 
-                            start_line=line,
+                            start_line=inspect.getsourcelines(original_handler)[1] if file != "unknown" else 1,
                             word_wrap=True
                         )
                         console.print(Panel(
                             syntax,
                             title=f"[bold green]{method} {path}[/bold green]",
-                            subtitle=f"[dim]{file}:{line}[/dim]",
+                            subtitle=f"[dim]{file}[/dim]",
                             expand=False
                         ))
                     except Exception as e:
@@ -189,9 +196,13 @@ def handlers(target_path: Optional[str] = None):
                     try:
                         # Deeply follow breadcrumbs for accurate metadata
                         original = _deep_unwrap(handler)
-                        file = os.path.relpath(inspect.getsourcefile(original))
-                        line = inspect.getsourcelines(original)[1]
-                        loc = f"{file}:{line}"
+                        src_file = inspect.getsourcefile(original)
+                        if src_file:
+                            file = os.path.relpath(src_file)
+                            line = inspect.getsourcelines(original)[1]
+                            loc = f"{file}:{line}"
+                        else:
+                            loc = "unknown"
                         name = getattr(original, '__name__', str(original))
                     except:
                         loc = "unknown"
@@ -202,9 +213,13 @@ def handlers(target_path: Optional[str] = None):
         with console.pager(styles=True):
             console.print(table)
 
-def schema(output: str = "swagger.json"):
+def schema(output: str = "swagger.json", app_path: Optional[str] = None):
     """Export OpenAPI specification to a JSON file."""
-    app_path = find_app()
+    if not app_path:
+        app_path = find_app()
+    else:
+        sys.path.insert(0, os.getcwd())
+
     if not app_path:
         console.print("[bold red]Error:[/bold red] Could not find an app.")
         sys.exit(1)
@@ -282,14 +297,10 @@ def main():
         routes(app_path=args.app)
 
     elif args.command == "handlers":
-        # We need to temporarily patch/adapt 'handlers' to accept app_path if we want to support it,
-        # but the current implementation relies on generic find_app.
-        # Ideally, we update find_app to accept an optional path or environment variable.
-        # For now, we'll retain the existing behavior but allow the 'path' argument.
-        handlers(target_path=args.path)
+        handlers(target_path=args.path, app_path=args.app)
     
     elif args.command == "schema":
-        schema(output=args.output)
+        schema(output=args.output, app_path=args.app)
 
 if __name__ == "__main__":
     main()

@@ -1,4 +1,4 @@
-# Minute 8: The Earth 🌍
+# The Earth 🌍
 
 Testing web apps usually involves spinning up a "test client", fiddling with ports, or mocking complex internal states. Heaven gives you `Earth`, a testing utility that lets you verify your world without leaving Python.
 
@@ -7,10 +7,8 @@ Testing web apps usually involves spinning up a "test client", fiddling with por
 Heaven tests are:
 
 1.  **In-Process**: No network overhead.
-
 2.  **Explicit**: You see exactly what `req`, `res`, and `ctx` look like.
-
-3.  **Flexible**: Test full lifecycles or atomic functions.
+3.  **Flexible**: Test full lifecycles, atomic functions, or swapped configurations.
 
 ## 1. Full Integration Tests
 
@@ -21,7 +19,8 @@ Use the `test()` context manager to simulate a real server environment (includin
 from main import app
 
 async def test_create_user():
-    async with app.earth.test() as earth:
+    # track_session=True automatically handles Cookies across requests
+    async with app.earth.test(track_session=True) as earth:
         # 1. Send Request
         req, res, ctx = await earth.POST('/users', body={'name': 'Ray'})
         
@@ -50,20 +49,9 @@ async def test_handler_logic():
     assert res.status == 201
 ```
 
-## 3. Mocking & Swapping
+## 3. Mocking, Swapping & Bypassing
 
-You often need to mock databases or external services.
-
-### Bucket Mocking
-If your app uses `app.peek('db')`, you can overwrite it for the test.
-
-```python
-async with app.earth.test() as earth:
-    # Overwrite the database connection
-    app.keep('db', MockDatabase())
-    
-    await earth.GET('/users')
-```
+You often need to mock databases, avoid rate limits, or swap authentication logic.
 
 ### Hook Swapping
 Swap out a startup hook (like `connect_db`) with a mock version.
@@ -79,9 +67,38 @@ async def connect_test_db(app): ...
 app.earth.swap(connect_prod_db, connect_test_db)
 ```
 
-## 4. Subdomains & WebSockets
+### Middleware Bypassing
+Skip specific middleware (like Rate Limiters) that might interfere with tests.
 
-Earth handles everything Heaven handles.
+```python
+# Don't run this middleware during tests
+app.earth.bypass(rate_limiter_hook)
+```
+
+### Bucket Mocking
+If your app uses `app.peek('db')`, you can overwrite it for the test.
+
+!!! warning "Warning"
+    `app.keep` is persistent across tests! If you overwrite a global dependency, you must manually restore it, otherwise downstream tests will use your mock.
+
+```python
+async with app.earth.test() as earth:
+    # 1. Backup original
+    original_db = app.unkeep('db')
+    
+    # 2. Overwrite with mock
+    app.keep('db', MockDatabase())
+    
+    try:
+        await earth.GET('/users')
+    finally:
+        # 3. Restore original for other tests
+        app.keep('db', original_db)
+```
+
+## 4. Subdomains, WebSockets & File Uploads
+
+Earth handles detailed scenarios easily.
 
 ```python
 # Test a subdomain
@@ -92,8 +109,14 @@ ws = await earth.SOCKET('/chat').connect()
 await ws.send('hello')
 assert await ws.receive() == 'world'
 await ws.close()
+
+# Test File Uploads
+await earth.upload('/avatar', 
+    files={'file': ('image.png', b'data')},
+    data={'userid': '123'}
+)
 ```
 
 ---
 
-**Next:** It works locally. Let's show the world. On to **[Minute 9: Deployment](deployment.md)**.
+**Next:** Confident much? Let your app run in the background with **[Daemons](daemons.md)**.

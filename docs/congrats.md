@@ -1,4 +1,4 @@
-# Minute 10: Mastery 🏆
+# Mastery 🏆
 
 **Checkmate.**
 

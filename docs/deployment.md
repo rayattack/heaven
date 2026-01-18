@@ -1,4 +1,4 @@
-# Minute 9: Deployment 🚀
+# Deployment 🚀
 
 You have built a masterpiece. Now it must scale.
 
@@ -45,4 +45,4 @@ Always put **Nginx** or **Caddy** in front of your Heaven app to handle SSL, sta
 
 ---
 
-**Next:** You made it. On to **[Minute 10: Mastery](congrats.md)**.
+**Next:** You made it. On to **[Mastery](congrats.md)**.

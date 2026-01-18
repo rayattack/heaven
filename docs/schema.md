@@ -1,4 +1,4 @@
-# Minute 7: Schema & Documentation 📜
+# Schema & API Docs
 
 Heaven doesn't just run your code; it understands it. By using schemas, you get instant validation, auto-generated documentation, and type safety, all powered by the incredibly fast `msgspec`.
 
@@ -30,7 +30,11 @@ class User(Schema):
 Instead of cluttering your handlers with decorators, Heaven uses a "Sidecar" pattern. You register schemas on the router's `schema` property.
 
 ```python
-# 1. Register the metadata
+# 0. You can mount schemas on subdomains e.g.
+api = app.subdomain('api')
+api.schema.POST(...)
+
+# 1. Or on the default subdomain i.e. `www`
 app.schema.POST('/users', 
     expects=User, 
     returns=User, 
@@ -38,19 +42,24 @@ app.schema.POST('/users',
     summary="Creates a new user in the system"
 )
 
-# 2. Define the handler (clean!)
+# 2. Then in your route handler(s)
 async def create_user(req, res, ctx):
-    user = req.data # Validated 'User' object
-    # database logic...
-    res.body = user # Heaven auto-converts this back to JSON
+    # Validated 'User' object injected into `data` by heaven
+    user = req.data
+
+    # maybe some database logic?...
+
+    # Heaven auto-converts this back to JSON
+    res.body = user
     
-# 3. Mount the handler
+# 3. Look ma, no decorators!
 app.POST('/users', create_user)
 ```
 
 ## Validation
 
 When you register an `expects` schema, Heaven automatically:
+
 1.  **Validates** the incoming JSON body against the schema.
 2.  **Aborts** with `422 Unprocessable Entity` if it's invalid (with a nice error message).
 3.  **Populates** `req.data` with the validated object.
@@ -76,7 +85,7 @@ app.DOCS('/docs', subdomain='api')
 
 ### Advanced: Output Protection
 
-You can control how strict Heaven is about what you send back.
+**You can also control how strict Heaven is about what you send back.**
 
 ```python
 app.schema.GET('/users/:id', 
@@ -91,9 +100,9 @@ app.schema.GET('/users/:id',
 
 ---
 
-> [!NOTE]
-> **Under the Hood**: Heaven's `Schema` and `Constraints` are thin wrappers around the excellent [msgspec](https://jcristharif.com/msgspec/) library. We recommend checking out their documentation for advanced usage, performance tips, and more complex type definitions.
+!!! note "Note"
+    **Under the Hood**: Heaven's `Schema` and `Constraints` are thin wrappers around the excellent [msgspec](https://jcristharif.com/msgspec/) library. We recommend checking out their documentation for advanced usage, performance tips, and more complex type definitions.
 
 ---
 
-**Next:** You have built it. But does it work? On to **[Minute 8: The Earth](earth.md)**.
+**Next:** Yay!!! You know json kung fu. But how well? On to **[API Docs](openapi.md)**.

@@ -40,8 +40,8 @@ app.AFTER('/*', 'path.to.security_headers')
 
 CSP is the heavy artillery of web security. It prevents script injection (XSS) by whitelisting exactly where content can come from.
 
-> [!WARNING]
-> A strict CSP can break your app if you use inline scripts or external CDNs not whitelisted. Test thoroughly!
+!!! warning "Warning"
+    A strict CSP can break your app if you use inline scripts or external CDNs not whitelisted. Test thoroughly!
 
 ### Strict Default Example
 This policy allows scripts/styles only from your own domain (`'self'`).

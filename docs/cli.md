@@ -1,4 +1,4 @@
-# Minute 2: The Command Line 🛠️
+# The Command Line 🛠️
 
 In Minute 1, you met `heaven fly`. But you don't just want to fly, you want to pilot. Heaven's CLI is your cockpit. It is precise, informative, and explicitly typed.
 
@@ -34,8 +34,8 @@ $ heaven fly
 $ heaven fly --port 8080 --host 0.0.0.0
 ```
 
-> [!NOTE]
-> `heaven fly` always enables auto-reload. It is designed for development.
+!!! note "Note"
+    `heaven fly` always enables auto-reload. It is designed for development.
 
 ## 2. Explicit Control: `heaven run`
 
@@ -86,4 +86,4 @@ $ heaven schema openapi-v1.json
 
 ---
 
-**Next:** Now that you can control the server, let's learn how to direct the traffic. On to **[Minute 3: The Router](router.md)**.
+**Next:** Now that you can control the server, let's learn how to direct the traffic. On to **[The Router](router.md)**.

@@ -1,4 +1,4 @@
-# Minute 6: The Context 🧠
+# The Context 🧠
 
 The `Context` object is your request-scoped memory. It allows you to pass data between hooks, middlewares, and handlers without cluttering function signatures.
 
@@ -31,14 +31,16 @@ async def dashboard_handler(req, res, ctx):
     print(f"Welcome back {ctx.user.name}")
 ```
 
-> [!WARNING]
-> You cannot overwrite reserved keys like `ctx.session`, `ctx.request`, or `ctx.app`. Use `ctx.keep('session', val)` only if you know exactly what you are doing.
+!!! warning "Warning"
+    You cannot overwrite reserved keys like `ctx.session`, `ctx.request`, or `ctx.app`. Use `ctx.keep('session', val)` only if you know exactly what you are doing.
 
 ## Why not modifies `req`?
 
 Some frameworks attach data to the `Request` object. Heaven believes in separation of concerns.
+
 - **Request**: What the client sent (Immutable-ish).
 - **Context**: What the server figured out (Mutable).
+- **Response**: What the server is sending (Your Envelope).
 
 ### Session Management
 If you enable `app.sessions()`, the session data lives here.
@@ -53,4 +55,4 @@ ctx.session.visited = True
 
 ---
 
-**Next:** We've covered the basics. Now let's superpower your app with Schemas. On to **[Minute 7: Schema & Docs](schema.md)**.
+**Next:** We've covered the basics. Now let's superpower your app with Schemas. On to **[Interceptors](hooks.md)**.

@@ -1,4 +1,4 @@
-# Minute 3: The Router 🛣️
+# The Router 🛣️
 
 The Router is the nervous system of your Heaven application. It decides where requests go, what runs before them, and what runs after.
 
@@ -60,6 +60,21 @@ app.GET('/users', handler, subdomain='api')
 app.GET('/dashboard', handler, subdomain='admin')
 ```
 
+OR
+
+```py
+api = app.subdomain('api')
+admin = app.subdomain('admin')
+
+# Matches: https://api.mysite.com/users
+api.GET('/users', handler)
+
+# Matches: https://admin.mysite.com/dashboard
+admin.GET('/dashboard', handler)
+```
+
+For more on subdomains, see [Minute 7-8: Subdomains](subdomains.md).
+
 ## Lifecycle Hooks: `ON` and `ONCE`
 
 You have full control over the lifespan of your application.
@@ -96,7 +111,8 @@ Runs before a request hits the handler. If you abort here, the handler never run
 ```python
 async def check_auth(req, res, ctx):
     if not req.headers.get('Authorization'):
-        res.abort('Unauthorized', status=401)
+        res.status = 401
+        res.abort('Unauthorized')
 
 # Protects /dashboard and everything under it
 app.BEFORE('/dashboard/*', check_auth)
@@ -137,8 +153,8 @@ app.sessions(secret_key='keep-it-secret')
 
 Heaven has a built-in process manager for background tasks. No Celery required.
 
-> [!WARNING]
-> Heaven is single-threaded. **Never** block the main loop with `time.sleep()`.
+!!! warning "Warning"
+    Heaven is single-threaded. **Never** block the main loop with `time.sleep()`.
 
 ### creating a Daemon
 A daemon is a function that receives the `app` instance. If it returns a number `N`, it sleeps for `N` seconds and runs again.
@@ -171,8 +187,8 @@ main.mount(blog_app)
 # Wait, let's clarify alignment with minute 8.
 ```
 
-> [!TIP]
-> Use `mount` to split your code into multiple files/modules, then simply combine them in `main.py`.
+!!! tip "Tip"
+    Use `mount` to split your code into multiple files/modules, then simply combine them in `main.py`.
 
 ---
 

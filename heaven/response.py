@@ -13,7 +13,7 @@ from .context import Context
 from .tutorials import get_guardian_angel_html, ASYNC_RENDER, NO_TEMPLATING, SYNC_RENDER
 from .request import Request
 if TYPE_CHECKING:
-    from router import App  # pragma: no cover
+    from router import App, Router  # pragma: no cover
 
 
 # For compatibility with older versions of python3 using this
@@ -68,7 +68,7 @@ class Response():
         self._headers = []
         self._status = STATUS_NOT_FOUND
         self._template = None
-        self._mounted_from_application = None
+        self._mounted_from_application : Union['Router', None] = None
 
     @MethodDispatch
     def abort(self, payload):

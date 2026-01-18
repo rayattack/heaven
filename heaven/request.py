@@ -1,5 +1,5 @@
 from datetime import datetime, date
-from typing import Any, TYPE_CHECKING
+from typing import Any, TYPE_CHECKING, Union
 from uuid import UUID
 from urllib.parse import parse_qs
 
@@ -97,7 +97,7 @@ class Request:
         return self._cookies
 
     @property
-    def form(self) -> "Form":
+    def form(self) -> Union["Form", None]:
         content_type = self.headers.get("content-type", "")
         if not ("multipart/form-data" in content_type or "application/x-www-form-urlencoded" in content_type):
             return None
@@ -137,7 +137,7 @@ class Request:
         booleans = {'false': False, 'true': True, '1': True, 0: False}
         def boolean(v: str) -> bool:
             if not isinstance(v, str): return False
-            return booleans.get(v.lower())
+            return booleans.get(v.lower()) or False
         kinds = {
             'int': int,
             'str': str,
@@ -211,10 +211,6 @@ class Request:
     @property
     def querystring(self):
         return self._scope.get("query_string", "")
-
-    @property
-    def scheme(self):
-        return self._scope.get("scheme")
 
     @property
     def subdomain(self):

@@ -1,3 +1,11 @@
+### 1.3.1
+- **Feature**: **Ordered Execution**. Hooks now run in strict FIFO order (Insertion Order).
+- **Feature**: **Guard & Unwind**. Mounting logic updated for intuitive middleware layering:
+    - **BEFORE (Guard)**: Parent hooks run *before* Child hooks.
+    - **AFTER (Unwind)**: Child hooks run *before* Parent hooks.
+- **Feature**: **Loop Monitor**. Added `App(monitor=0.1)` configuration to log warnings if the event loop is blocked (latency spike detection).
+- **Documentation**: **Complete Overhaul**. Changed the documentation suite (30-Minute Mastery).
+
 ### 1.3.0
 - **Feature**: **Subdomain Schemas**. Full support for defining schemas specific to subdomains.
     - **Proxy API**: New `app.subdomain('name')` API that returns a context-aware proxy.

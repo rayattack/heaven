@@ -1,4 +1,4 @@
-# Minute 4: The Request 📨
+# The Request 📨
 
 You've built the airport (Router), but here comes the plane. The `Request` object contains everything the client sent you, pre-parsed and ready to fly.
 
@@ -16,7 +16,7 @@ Let's dissect `req`.
 - **`req.body`**: (bytes) The raw body.
 - **`req.method`**: (str) `GET`, `POST`, etc.
 - **`req.url`**: (str) The full path (e.g., `/users/1?active=true`).
-- **`req.route`**: (str) The route template (e.g., `/users/:id`).
+- **`req.route`**: (str) The matched app route (e.g., `/users/:id`).
 
 ## Data Access
 
@@ -30,8 +30,8 @@ id = req.params.get('id')
 assert isinstance(id, int)
 ```
 
-> [!NOTE]
-> Supported types: `:int`, `:float`, `:bool`, `:uuid`, `:date`, `:datetime`, `:str` (default).
+!!! note "Note"
+    Supported types: `:int`, `:float`, `:bool`, `:uuid`, `:date`, `:datetime`, `:str` (default).
 
 ### Query Strings (`req.queries`)
 Query parameters can also be typed in the route definition!
@@ -45,7 +45,7 @@ sort = req.queries.get('sort') # 'asc' (str)
 ```
 
 ### JSON Bodies (`req.data`)
-If you use [Minute 7: Schema & Docs](schema.md), Heaven auto-validates the body and puts the result here.
+If you use Heaven's Schema feature, [Minute 19: Schema & Docs](schema.md), Heaven auto-validates the body and puts the result here.
 
 ```python
 # Route registered with `expects=UserSchema`
@@ -74,4 +74,4 @@ file = form.get('avatar') # For file uploads
 
 ---
 
-**Next:** You've heard them. Now answer them. On to **[Minute 5: The Response](response.md)**.
+**Next:** You've heard them. Now answer them. On to **[The Response](response.md)**.
