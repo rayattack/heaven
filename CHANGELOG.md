@@ -1,3 +1,7 @@
+### 1.2.2
+- **Feature**: **String Schemas**. `router.schema` methods (e.g. `POST`, `GET`) now accept string paths for `expects` and `returns` arguments.
+    - **Lazy Loading**: You can now pass schemas as strings (e.g. `expects='my.module.Schema'`) to avoid circular imports and keep code clean, matching the behavior of route handlers.
+
 ### 1.2.1
 - **Feature**: **Smart CORS**. Re-architected `app.cors()` to accept flexible configurations.
     - **Kwargs Support**: Now accepts configuration via kwargs (e.g. `maxAge=3600`) with robust key normalization (handles `max-age`, `MAX_AGE`, `maxage`).

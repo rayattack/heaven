@@ -427,8 +427,8 @@ class SchemaRegistry:
 
     def add(self, method: str, route: str, expects=None, returns=None, summary=None, description=None, protect=None, partial=None, strict=None, group=None):
         self._schemas[(method.upper(), route)] = {
-            'expects': expects,
-            'returns': returns,
+            'expects': _string_to_function_handler(expects),
+            'returns': _string_to_function_handler(returns),
             'summary': summary,
             'description': description,
             'protect': protect,
