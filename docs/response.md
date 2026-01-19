@@ -21,6 +21,17 @@ res.body = "Hello World" # Text
 res.body = b"Hello World" # Bytes
 ```
 
+### `res.http`
+
+Instead of importing `HTTPStatus` from the standard library, you can use the built-in proxy:
+
+```python
+# No need for: from http import HTTPStatus
+res.status = res.http.CREATED
+if res.status == res.http.UNAUTHORIZED:
+    ...
+```
+
 ## JSON
 
 ```python

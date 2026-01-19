@@ -24,7 +24,7 @@ plugins:
       minify_html: true
 
 nav:
-  - Heaven v1.3.5: index.md
+  - Heaven v1.3.6: index.md
   - Intro: index.md
   - The Beginning: quickstart.md
   - The Command Line: cli.md

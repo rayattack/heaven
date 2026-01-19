@@ -112,6 +112,10 @@ class Response():
     def text(self) -> str:
         return self.body.decode()
 
+    @property
+    def http(self):
+        return HTTPStatus
+
     def header(self, key, val) -> 'Response':
         if isinstance(val, (list, tuple, set)): val = ', '.join(map(str, val))
         else: val = str(val)

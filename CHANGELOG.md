@@ -1,3 +1,6 @@
+### 1.3.6
+- **Feature**: **Response HTTP Proxy**. Added `res.http` as a proxy for `http.HTTPStatus`. Now you can do `res.status = res.http.CREATED` without importing `HTTPStatus`.
+
 ### 1.3.5
 - **Feature**: **Typed Context Key**. Added `Key[T]` for typed context storage and retrieval. usage: `app.keep(Key[User]("user"), user_obj)`.
 - **Feature**: **Generic Request**. `Request` is now Generic, enabling typed `req.data` return values based on the schema.

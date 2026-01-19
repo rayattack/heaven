@@ -37,6 +37,13 @@ def test_response_status():
     response.status = status.NOT_ACCEPTABLE
     assert(response.status == status.NOT_ACCEPTABLE)
 
+def test_response_http_proxy():
+    assert response.http == status
+    assert response.http.OK == 200
+    assert response.http.NOT_FOUND == 404
+    response.status = response.http.CREATED
+    assert response.status == 201
+
 def test_response_cookie_bad():
     try:
        response.cookie('authorization', 'Bearer 123', expires='2022-12-12', secure=False, SameSite='strict')
