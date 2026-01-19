@@ -7,25 +7,28 @@ Heaven doesn't just run your code; it understands it. By using schemas, you get 
 A schema is a class that describes your data structure. Heaven exports `Schema` (a wrapper around `msgspec.Struct`) and `Constraints` (a wrapper around `msgspec.Meta`) to help you define validation rules.
 
 ```python
+from typing import Annotated
 from heaven import Schema, Field
 
 class User(Schema):
     id: int
     name: str
     
-    # 1. Unified Bounds (min/max)
-    # Field() now returns the Type + Constraints, saving you verbose typing!
-    age: Field(int, min=18, max=100, desc="Must be legal age")
-    tags: Field(list[str], min=1, desc="At least one tag required")
+    # 1. Bounds (Values vs Lengths)
+    # Use 'min'/'max' for numeric values (>=, <=)
+    age: Annotated[int, Field(min=18, max=100, desc="Must be legal age")]
+    
+    # Use 'min_len'/'max_len' for sequence lengths
+    tags: Annotated[list[str], Field(min_len=1, desc="At least one tag required")]
     
     # 2. Formats
     # Built-in support for 'email', 'uuid', and 'slug'
-    email: Field(str, format="email", example="ray@heaven.com")
-    apikey: Field(str, format="uuid", error_hint="Invalid API Key format")
-    slug: Field(str, format="slug")
+    email: Annotated[str, Field(format="email", example="ray@heaven.com")]
+    apikey: Annotated[str, Field(format="uuid", error_hint="Invalid API Key format")]
+    slug: Annotated[str, Field(format="slug")]
 
     # 3. Steps (Multiples)
-    duration: Field(int, step=15)
+    duration: Annotated[int, Field(step=15)]
     
     # 4. Defaults (via msgspec.field)
     is_active: bool = True
@@ -34,47 +37,67 @@ class User(Schema):
 
 ## The `Field` Helper
 
-Heaven provides a smart `Field()` helper that simplifies validation. It returns a fully configured `Annotated` type, so you don't have to import `Annotated` or `Constraints` manually.
-
-```python
-# Instead of:
-age: Annotated[int, Constraints(ge=18)]
-
-# You write:
-age: Field(int, min=18)
-```
+Heaven provides a smart `Field()` helper that simplifies validation. It returns `msgspec.Meta` constraints configured for your needs.
 
 | Argument | Maps To (msgspec) | Description |
 | :--- | :--- | :--- |
-| `min` | `ge` / `min_length` | Minimum value (int) or length (str/list) |
-| `max` | `le` / `max_length` | Maximum value (int) or length (str/list) |
+| `min` / `max` | `ge` / `le` | Numeric constraints (>=, <=) |
+| `min_len` / `max_len` | `min_length` / `max_length` | Sequence length constraints |
 | `step` | `multiple_of` | Number must be a multiple of X |
 | `format` | `pattern` | Presets: `"email"`, `"uuid"`, `"slug"` |
 | `desc` | `description` | Field description for OpenAPI |
 | `example` | `extra_json_schema` | Example value for docs |
 | `error_hint`| `extra_json_schema` | Custom error message hint |
 
-| `error_hint`| `extra_json_schema` | Custom error message hint |
+## Advanced Patterns
 
-## Power Usage (Escape Hatches)
+Heaven's `Field` helper is designed to scale with your needs. It seamlessly integrates with `msgspec`'s advanced features.
 
-Heaven is designed to get out of your way. You are never locked into the `Field` helper.
+### 1. Nested Arrays & Matrices
+
+You can apply constraints to the list itself AND the items within it.
+
+```python
+class BatchUpload(Schema):
+    # The LIST must have 1-100 items.
+    # Each ITEM must be a string of length 3-50.
+    tags: Annotated[
+        list[Annotated[str, Field(min_len=3, max_len=50)]], 
+        Field(min_len=1, max_len=100)
+    ]
+```
+
+### 2. Complex Unions (Polymorphism)
+
+Validate data that can be one of multiple types, each with its own rules.
+
+```python
+class SearchQuery(Schema):
+    # ID can be a positive Integer OR a UUID String
+    id: Annotated[int, Field(min=1)] | Annotated[str, Field(format="uuid")]
+```
+
+### 3. Timezones & Dates
+
+Native `msgspec` constraints (like `tz`) pass straight through `Field`.
+
+```python
+from datetime import datetime
+
+class Event(Schema):
+    # Enforce timezone-aware datetimes (rejects naive inputs)
+    start_time: Annotated[datetime, Field(tz=True)]
+```
+
+### 4. The Escape Hatch (Raw Access)
+
+If you strictly prefer raw `msgspec`, you can bypass `Field` entirely.
 
 ```python
 from heaven import Constraints
 
-class PowerUser(Schema):
-    # 1. Field Escape Hatch
-    # Any unknown argument is passed directly to msgspec.Meta
-    # e.g. 'tz' (timezone) constraint
-    birthday: Field(str, format="date", tz=True)
-
-    # 2. Raw msgspec (Bypassing Field)
-    # You can use standard Annotated + Constraints logic anytime
-    score: Annotated[int, Constraints(ge=0, le=100)]
-    
-    # 3. Complex cached structs (Advanced msgspec)
-    # Schema matches msgspec.Struct behavior perfectly
+class RawMetal(Schema):
+    # Pure msgspec code works 100% of the time
     data: Annotated[bytes, Constraints(min_length=10)]
 ```
 

@@ -3,8 +3,8 @@ from .router import Router
 from .router import Server
 from .request import Request
 from .response import Response
-from .schema import Schema, Constraints
+from .schema import Schema, Constraints, Field
 from .context import Context
 
 
-__version__ = '1.3.3'
+__version__ = '1.3.4'

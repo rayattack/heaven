@@ -1,5 +1,5 @@
-### 1.3.3
-- **Feature**: **Smart Field**. Added `Field()` helper for schemas, abstracting msgspec constraints. Supports `min/max`, `format="email"`, `format="slug"`, `step`, and more.
+### 1.3.4
+- **Feature**: **Smart Field**. Added `Field()` helper for schemas, abstracting msgspec constraints. Supports `min/max` (numeric), `min_len/max_len` (sequences), `format="email"`, and more. Pyright compliant.
 
 ### 1.3.1
 - **Feature**: **Ordered Execution**. Hooks now run in strict FIFO order (Insertion Order).
