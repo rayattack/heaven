@@ -6,7 +6,7 @@ from heaven import Schema
 
 class TestLibrary(unittest.TestCase):
     def test_version(self):
-        self.assertEqual(heaven.__version__, '1.3.4')
+        self.assertEqual(heaven.__version__, '1.3.5')
 
     def test_schema_export(self):
         assert issubclass(Schema, Struct)

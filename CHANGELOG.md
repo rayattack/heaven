@@ -1,3 +1,8 @@
+### 1.3.5
+- **Feature**: **Typed Context Key**. Added `Key[T]` for typed context storage and retrieval. usage: `app.keep(Key[User]("user"), user_obj)`.
+- **Feature**: **Generic Request**. `Request` is now Generic, enabling typed `req.data` return values based on the schema.
+- **Improved**: **Type Safety**. Enhanced typing support throughout the Router and Context, paving the way for better IDE autocompletion.
+
 ### 1.3.4
 - **Feature**: **Smart Field**. Added `Field()` helper for schemas, abstracting msgspec constraints. Supports `min/max` (numeric), `min_len/max_len` (sequences), `format="email"`, and more. Pyright compliant.
 
