@@ -5,7 +5,9 @@ from http import HTTPStatus
 from importlib import import_module
 from inspect import iscoroutinefunction
 from os import path, getcwd
-from typing import Any, Callable, Tuple, Union
+from typing import Any, Callable, Tuple, Union, overload, TypeVar, Generic
+
+T = TypeVar("T")
 
 import json
 import mimetypes
@@ -48,7 +50,7 @@ from .constants import (
 from .utils import preprocessor
 from .request import Request
 from .response import Response
-from .context import Context, Look
+from .context import Context, Look, Key
 from .errors import AbortException, SubdomainError, UrlDuplicateError, UrlError
 
 methods = ['get', 'post', 'put', 'delete', 'connect', 'head', 'options', 'patch']
@@ -734,16 +736,33 @@ class Router(object):
             loop.create_task(_daemon(app))
         self.__daemons.append(_daemon)
 
-    def keep(self, key, value):
-        self._buckets[key] = value
+    @overload
+    def keep(self, key: Key[T], value: T) -> None: ...
+    
+    @overload
+    def keep(self, key: str, value: Any) -> None: ...
 
-    def unkeep(self, key):
-        value = self._buckets[key]
-        del self._buckets[key]
+    def keep(self, key: Union[str, Key[T]], value: Any):
+        if isinstance(key, Key):
+            self._buckets[key.name] = value
+        else:
+            self._buckets[key] = value
+
+    def unkeep(self, key: Union[str, Key[T]]):
+        k = key.name if isinstance(key, Key) else key
+        value = self._buckets[k]
+        del self._buckets[k]
         return value
 
-    def peek(self, key):
-        try: value = self._buckets[key]
+    @overload
+    def peek(self, key: Key[T]) -> Union[T, None]: ...
+    
+    @overload
+    def peek(self, key: str) -> Any: ...
+
+    def peek(self, key: Union[str, Key[T]]) -> Any:
+        k = key.name if isinstance(key, Key) else key
+        try: value = self._buckets[k]
         except KeyError: return None
         else: return value
 

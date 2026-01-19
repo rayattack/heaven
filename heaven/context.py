@@ -1,4 +1,22 @@
-from typing import Any
+from typing import Any, Generic, TypeVar, overload, Union
+
+T = TypeVar("T")
+
+class Key(Generic[T]):
+    """A typed key for storing and retrieving values from the context."""
+    def __init__(self, name: str):
+        self.name = name
+
+    def __hash__(self):
+        return hash(self.name)
+
+    def __eq__(self, other):
+        if isinstance(other, Key):
+            return self.name == other.name
+        return self.name == other
+
+    def __str__(self):
+        return self.name
 
 
 class Context():
@@ -6,13 +24,32 @@ class Context():
         self._application = application
         self._data = {}
 
-    def keep(self, key, value):
-        self._data[key] = value
+    @overload
+    def keep(self, key: Key[T], value: T) -> None: ...
+    
+    @overload
+    def keep(self, key: str, value: Any) -> None: ...
 
-    def peek(self, key):
+    def keep(self, key: Union[str, Key[T]], value: Any):
+        if isinstance(key, Key):
+            self._data[key.name] = value
+        else:
+            self._data[key] = value
+
+    @overload
+    def peek(self, key: Key[T]) -> Union[T, None]: ...
+    
+    @overload
+    def peek(self, key: str) -> Any: ...
+
+    def peek(self, key: Union[str, Key[T]]) -> Any:
+        if isinstance(key, Key):
+            return self._data.get(key.name)
         return self._data.get(key)
 
-    def unkeep(self, key):
+    def unkeep(self, key: Union[str, Key[T]]):
+        if isinstance(key, Key):
+            return self._data.pop(key.name, None)
         return self._data.pop(key, None)
 
     __reserved = {'session', 'app', 'request', 'response', 'headers', 'cookies'}

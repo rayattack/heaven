@@ -1,5 +1,5 @@
 from datetime import datetime, date
-from typing import Any, TYPE_CHECKING, Union
+from typing import Any, TYPE_CHECKING, Union, TypeVar, Generic
 from uuid import UUID
 from urllib.parse import parse_qs
 
@@ -10,8 +10,9 @@ import msgspec
 if TYPE_CHECKING:
     from heaven import Router
 
+T = TypeVar("T")
 
-class Request:
+class Request(Generic[T]):
     def __init__(self, scope, body, receive, metadata=None, application=None):
         self._application = application
         self._body = body
@@ -38,10 +39,10 @@ class Request:
         return msgspec.json.decode(self._body)
 
     @property
-    def data(self):
+    def data(self) -> T:
         """Returns the validated data from the request body as per schema definition"""
         if self._data is not None: return self._data
-        if not self._body: return None
+        if not self._body: return None  # type: ignore
         
         # If no schema was provided, behavior is same as req.json
         if not self._schema: return self.json
