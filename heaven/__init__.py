@@ -4,7 +4,7 @@ from .router import Server
 from .request import Request
 from .response import Response
 from .schema import Schema, Constraints, Field
-from .context import Context
+from .context import Context, Key
 
 
-__version__ = '1.3.6'
+__version__ = '1.3.7'

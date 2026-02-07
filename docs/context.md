@@ -34,6 +34,34 @@ async def dashboard_handler(req, res, ctx):
 !!! warning "Warning"
     You cannot overwrite reserved keys like `ctx.session`, `ctx.request`, or `ctx.app`. Use `ctx.keep('session', val)` only if you know exactly what you are doing.
 
+## Typed Keys (New in 1.3.7)
+
+When working on large applications, relying on string keys or dynamic attributes can lead to typing issues. Heaven now provides a `Key` generic for type-safe context storage.
+
+```python
+from heaven import Key, App
+
+# Define typed keys
+UserID = Key[int]("user_id")
+IsAdmin = Key[bool]("is_admin")
+
+async def middleware(req, res, ctx):
+    # Type checkers know this expects an int
+    ctx.keep(UserID, 42) 
+    
+    # This would raise a static type check error!
+    # ctx.keep(UserID, "not an int")
+
+async def handler(req, res, ctx):
+    # Returns int | None (auto-inferred)
+    uid = ctx.peek(UserID)
+    
+    # Returns bool | None
+    admin = ctx.peek(IsAdmin)
+```
+
+This works for both `ctx.keep/peek` (request-scoped) and `app.keep/peek` (application-scoped).
+
 ## Why not modifies `req`?
 
 Some frameworks attach data to the `Request` object. Heaven believes in separation of concerns.
