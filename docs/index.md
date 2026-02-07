@@ -1,40 +1,80 @@
-# Welcome to Heaven ⚡
+# The Developer Experience Dream
 
-You are here because you want to build Python web applications without the boilerplate, the bloat, or the confusion.
+## - To **Master** A Web Framework In 30 Minutes Or Less
 
-**Heaven** is the super-simple, extremely fast, web framework for purists. It doesn't use "magic" decorators to hide how things work. It gives you raw ASGI speed with a developer experience that allows for **complete mastery in 10 minutes or less.**
+**Heaven** was born from a simple dream: *You shouldn't need a PhD in web development to build an enterprise web application*
+
+Web development is like a **chess board**. Many frameworks expect you to be at the level of [Magnus Carlsen](https://en.wikipedia.org/wiki/Magnus_Carlsen) before you can play (create) a **legendary** game (web application).
+
+Other frameworks are like a crowded room shouting suggestions at you. They try to be everything for everyone. They bury you in layers of abstraction until you forget what HTTP looks like.
+
+**Heaven is different.**
+
+It gives you raw, unadulterated power and gets out of your way immediately with a syntax designed for
+an **average developer to understand in 30 minutes** or less.
+
+-------
+
+*yourapp/app.py*
+```py
+from heaven import Router
+
+# create the application
+app = Router()
+
+# define a route and tell heaven where it can find your handler
+app.GET('/v1/games/:id', 'controllers.games.play_a_game')
+```
+
+-------
+
+*yourapp/controllers/games.py*
+```py
+def play_a_game(req, res, ctx):
+  res.body = 'Checkmate.'
+```
+
+-------
+
+## Why Another Python Framework?
+
+Tired of **Flask's** thread-local magic and aging internals.
+Tired of **Django's** monolithic weight.
+Tired of **FastAPI's** dependency injection labyrinth?
+
+Looking for something **Powerful** and lightning **Fast**.
+A framework that **You won't spend months learning**, cos life is too short - and more importantly
+**years mastering**?
+
+... then you belong in **Heaven**.
+
+
+## Your 30-Minute Path to Mastery
+
+Because Heaven relies on standard Python and pure HTTP concepts, you don't need a 500-page manual. You need 30 minutes.
+
+- **[Min 01-02: The Beginning](quickstart.md)** - From Zero to Hello World.
+- **[Min 03-04: The Command Line](cli.md)** - Controlling the skies with `fly` and `run`.
+- **[Min 05-06: The Router](router.md)** - Understanding routes and dispatch.
+- **[Min 07-08: Subdomains & Mounts](subdomains.md)** - Multi-tenancy and architecture.
+- **[Min 09-10: The Request](request.md)** - Reading the user's mind.
+- **[Min 11-12: The Response](response.md)** - Speaking back with authority.
+- **[Min 13-14: Templating & Files](html.md)** - Rendering views and serving static assets.
+- **[Min 15-16: The Context](context.md)** - Managing state like a pro.
+- **[Min 17-18: Hooks & Middleware](hooks.md)** - Intercepting the pipeline power.
+- **[Min 19-20: Schemas & Validation](schema.md)** - Bulletproof data validation.
+- **[Min 21-22: Auto-Documentation](openapi.md)** - Free Swagger UI.
+- **[Min 23-24: Testing (Earth)](earth.md)** - Testing your world without leaving it.
+- **[Min 25-26: Background Tasks](daemons.md)** - Native background workers.
+- **[Min 27-28: Security & Plugins](security.md)** - Signing, hashing and extending.
+- **[Min 29-30: Mastery & Deployment](deployment.md)** - The final word and going live.
+
+### Advanced Topics
+- **[Plugins System](plugins.md)** - Extending Heaven with powerful integrations.
 
 ---
 
-## Why Heaven?
-
-If you are tired of:
-- **FastAPI's** complex dependency injection and verbose schemas.
-- **Flask's** aging internal architecture and global variables.
-- **Django's** massive boilerplate and rigid structure.
-
-...then you belong in **Heaven**.
-
----
-
-## Your 10-Minute Journey to Mastery
-
-We believe you should be able to read the source code of your framework. Heaven is small enough that you *can*.
-
-- **Minute 1**: [Quickstart](quickstart.md) - From Zero to Hello World.
-- **Minute 2**: [The Request](request.md) - Understanding the incoming data.
-- **Minute 3**: [The Response](response.md) - Sending data back to the world.
-- **Minute 4**: [The Context](context.md) - Managing state across your app.
-- **Minute 5**: [The Router & Daemons](router.md) - Routing, Hooks, and Background Jobs.
-- **Minute 6**: [HTML & Assets](html.md) - Serving templates and static files.
-- **Minute 7**: [Drinking Coffee](coffee.md) - You're almost a master.
-- **Minute 8**: [Application Mounting](mount.md) - Building modular, large-scale apps.
-- **Minute 9**: [Auth & Validation](snippets.md) - Protecting your endpoints with `.BEFORE`.
-- **Minute 10**: [The Finish Line](congrats.md) - You are now a Heaven Master.
-
----
-
-## Get Started Now
+### Ready to Play?
 
 ```sh
 $ pip install heaven
@@ -43,10 +83,12 @@ $ pip install heaven
 ```python
 from heaven import App
 
+# For instance if this app could talk it might tell you:
+# Hello my name is `your-app` - I am a Python web application
+# I spend my time serving web requests and 
+# when I am free - I spend my time dreaming of becoming a chess engine
 app = App()
 
-app.GET('/', lambda req, res, ctx: res.renders('index.html'))
-
-# Run with any ASGI server
-# $ uvicorn app:app --port 5000 --reload
+# The move is yours.
+app.GET('/', lambda req, res, ctx: res.json({'message': 'Checkmate.'}))
 ```

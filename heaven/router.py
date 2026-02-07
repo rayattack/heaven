@@ -5,12 +5,17 @@ from http import HTTPStatus
 from importlib import import_module
 from inspect import iscoroutinefunction
 from os import path, getcwd
-from typing import Any, Callable, Tuple, Union
+from typing import Any, Callable, Tuple, Union, overload, TypeVar, Generic
+
+T = TypeVar("T")
 
 import json
 import mimetypes
 import msgspec
 from aiofiles import open as async_open_file
+import time
+import asyncio
+import logging
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from uvicorn import run
 
@@ -45,17 +50,18 @@ from .constants import (
 from .utils import preprocessor
 from .request import Request
 from .response import Response
-from .context import Context, Look
+from .context import Context, Look, Key
 from .errors import AbortException, SubdomainError, UrlDuplicateError, UrlError
 
 methods = ['get', 'post', 'put', 'delete', 'connect', 'head', 'options', 'patch']
 
-Handler = Union[Callable[[Request, Response, Context], object], str]
+Handles = Callable[[Request, Response, Context], object]
+Handler = Union[Handles, str]
 
 SEPARATOR = INDEX = "/"
 
 
-def _closure_mounted_application(handler: Handler, mounted: 'Router'):
+def _closure_mounted_application(handler: Handles, mounted: 'Router'):
     async def delegate(req: Request, res: Response, ctx: Context):
         req.mounted = mounted
         res._mounted_from_application = mounted
@@ -87,8 +93,8 @@ def _set_content_type(req: Request, res: Response):
         res.headers = 'Content-Type', mime_type
 
 
-def _string_to_function_handler(handler: str):
-    if isinstance(handler, str):
+def _string_to_function_handler(handler: Handler):
+    if isinstance(handler, str) and '.' in handler:
         module_name, function_name = handler.rsplit('.', 1)
         module = import_module(module_name)
         handler = getattr(module, function_name)
@@ -132,8 +138,9 @@ class Route(object):
         route_at_deviation = '/'.join(routes)
         parameters = []
 
-        # grand father deviation point in case we are dealing from the start with a catch all route
-        deviation_point: Route = node.children.get('*')
+        # grand father deviation point in case
+        # we are dealing from the start with a catch all route
+        deviation_point: Union[Route, None] = node.children.get('*')
 
         while routes:
             route = routes.popleft()
@@ -182,10 +189,11 @@ class Route(object):
 
 
         # time to process what parameters we saw
-        for parameter in parameters:
-            r.params = parameter.resolve(node.route)
+        for parameter in parameters: r.params = parameter.resolve(node.route)
+
         # default node.route is None and handler as well
-        # so this returns None if no route encountered or what was encountered in while block above
+        # so this returns None if no route encountered or what
+        # was encountered in while block above
         r.qh = node.queryhint
         return node.route, node.handler
 
@@ -387,7 +395,19 @@ class Routes(object):
                 self.cache[method][route] = None
 
     async def xhooks(self, hookstore, matched, r: Request, w: Response, c: Context):
-        hooks = set(hookstore.get(matched, []))
+        # We use a list to preserve order and a set for O(1) uniqueness checks
+        hooks = []
+        seen = set()
+
+        def add_unique(new_hooks):
+             for hook in new_hooks:
+                 if hook not in seen:
+                     seen.add(hook)
+                     hooks.append(hook)
+
+        # 1. Exact match hooks
+        add_unique(hookstore.get(matched, []))
+
         """Here we are getting any and or all hooks that match the url verbatim as provided
         i.e. /url/:id or /url/:id/nested
         """
@@ -396,7 +416,9 @@ class Routes(object):
         for position, part in enumerate(parts):
             joinedparts = "/".join(parts[:position])
             _ = '' if position == 0 else SEPARATOR
-            hooks.update(hookstore.get(f'/{joinedparts}{_}*', []))
+            # 2. Wildcard hooks from parents
+            add_unique(hookstore.get(f'/{joinedparts}{_}*', []))
+        
         """Next we clean the matched url of any '/' surpluses before splitting it into a list
         for enumeration.
         Enumeration helps us gradually use the current enumeration position/offset/index to
@@ -425,15 +447,16 @@ class SchemaRegistry:
         self._router = router
         self._schemas = {}
 
-    def add(self, method: str, route: str, expects=None, returns=None, summary=None, description=None, protect=None, partial=None, strict=None):
-        self._schemas[(method.upper(), route)] = {
-            'expects': expects,
-            'returns': returns,
+    def add(self, method: str, route: str, expects=None, returns=None, summary=None, description=None, protect=None, partial=None, strict=None, group=None, subdomain=DEFAULT):
+        self._schemas[(method.upper(), route, subdomain)] = {
+            'expects': _string_to_function_handler(expects) if expects else None,
+            'returns': _string_to_function_handler(returns) if returns else None,
             'summary': summary,
             'description': description,
             'protect': protect,
             'partial': partial,
-            'strict': strict
+            'strict': strict,
+            'group': group
         }
 
     def POST(self, route: str, **kwargs): self.add('POST', route, **kwargs)
@@ -443,8 +466,49 @@ class SchemaRegistry:
     def PATCH(self, route: str, **kwargs): self.add('PATCH', route, **kwargs)
 
 
+class BoundSchemaRegistry:
+    def __init__(self, registry: SchemaRegistry, subdomain: str):
+        self.registry = registry
+        self.subdomain = subdomain
+
+    def POST(self, route: str, **kwargs): self.registry.add('POST', route, subdomain=self.subdomain, **kwargs)
+    def GET(self, route: str, **kwargs): self.registry.add('GET', route, subdomain=self.subdomain, **kwargs)
+    def PUT(self, route: str, **kwargs): self.registry.add('PUT', route, subdomain=self.subdomain, **kwargs)
+    def DELETE(self, route: str, **kwargs): self.registry.add('DELETE', route, subdomain=self.subdomain, **kwargs)
+    def PATCH(self, route: str, **kwargs): self.registry.add('PATCH', route, subdomain=self.subdomain, **kwargs)
+
+
+class SubdomainContext:
+    def __init__(self, app: 'Router', name: str):
+        self.app = app
+        self.name = name
+
+    @property
+    def schema(self):
+        return BoundSchemaRegistry(self.app.schema, self.name)
+    
+    def AFTER(self, route: str, handler: Handler): self.app.AFTER(route, handler, subdomain=self.name)
+    def BEFORE(self, route: str, handler: Handler): self.app.BEFORE(route, handler, subdomain=self.name)
+    def CONNECT(self, route: str, handler: Handler): self.app.CONNECT(route, handler, subdomain=self.name)
+    def DELETE(self, route: str, handler: Handler): self.app.DELETE(route, handler, subdomain=self.name)
+    def GET(self, route: str, handler: Handler): self.app.GET(route, handler, subdomain=self.name)
+    def HTTP(self, route: str, handler: Handler): self.app.HTTP(route, handler, subdomain=self.name)
+    def OPTIONS(self, route: str, handler: Handler): self.app.OPTIONS(route, handler, subdomain=self.name)
+    def PATCH(self, route: str, handler: Handler): self.app.PATCH(route, handler, subdomain=self.name)
+    def POST(self, route: str, handler: Handler): self.app.POST(route, handler, subdomain=self.name)
+    def PUT(self, route: str, handler: Handler): self.app.PUT(route, handler, subdomain=self.name)
+    def TRACE(self, route: str, handler: Handler): self.app.TRACE(route, handler, subdomain=self.name)
+    def SOCKET(self, route: str, handler: Handler): self.app.SOCKET(route, handler, subdomain=self.name)
+    def WEBSOCKET(self, route: str, handler: Handler): self.app.WEBSOCKET(route, handler, subdomain=self.name)
+    def WS(self, route: str, handler: Handler): self.app.WS(route, handler, subdomain=self.name)
+    def assets(self, folder: str, route=None, relative_to=None): self.app.ASSETS(folder, route, subdomain=self.name, relative_to=relative_to)
+    def abettor(self, method: str, route: str, handler: Handler): self.app.abettor(method, route, handler, subdomain=self.name)
+    def doc(self, route: str, title="API Reference", version="0.0.1"): self.app.DOCS(route, title, version, subdomain=self.name)
+
+
 class Router(object):
-    def __init__(self, configurator=None, protect_output=True, allow_partials=False, fail_on_output=True):
+    def __init__(self, configurator=None, protect_output=True, allow_partials=False, fail_on_output=True, debug=True, monitor: Union[float, None] = None):
+        self._debug = debug
         self.__ws = None
         self.finalized = False
         self.initializers = deque()
@@ -462,6 +526,16 @@ class Router(object):
         self._protect_output = protect_output
         self._allow_partials = allow_partials
         self._fail_on_output = fail_on_output
+        
+        if monitor and monitor > 0:
+            logger = logging.getLogger("heaven.monitor")
+            async def _watchdog(app):
+                start = time.time()
+                await asyncio.sleep(monitor)
+                lag = time.time() - start - monitor
+                if lag > monitor: logger.warning(f"Event Loop Blocked! Lag: {lag:.4f}s")
+                return monitor
+            self.__daemons.append(_watchdog)
 
     @property
     def _(self):
@@ -476,7 +550,7 @@ class Router(object):
 
     def _bake_schemas(self):
         if self._baked: return
-        for (method, route), meta in self.schema._schemas.items():
+        for (method, route, subdomain), meta in self.schema._schemas.items():
             expects = meta.get('expects')
             if expects and hasattr(expects, '__struct_fields__'):
                 decoder = msgspec.json.Decoder(expects)
@@ -487,7 +561,7 @@ class Router(object):
                         res.status = 422
                         res.body = str(e).encode()
                         res.abort(res.body)
-                self.BEFORE(route, validate_hook)
+                self.BEFORE(route, validate_hook, subdomain=subdomain)
             
             returns = meta.get('returns')
             if returns:
@@ -527,12 +601,12 @@ class Router(object):
                             res.status = 500
                             res.body = f"Output Validation Error: {str(e)}".encode()
                         else:
-                            print(f"⚠️ Heaven Output Warning [{req.route}]: {str(e)}")
+                            print(f"Heaven Output Warning [{req.route}]: {str(e)}")
                             # Fallback to normal encoding
                             res.headers = "Content-Type", "application/json"
                             res.body = msgspec.json.encode(res.body)
                 
-                self.AFTER(route, output_hook)
+                self.AFTER(route, output_hook, subdomain=subdomain)
         self._baked = True
 
     async def __call__(self, scope, receive, send):
@@ -552,13 +626,44 @@ class Router(object):
         metadata = preprocessor(scope)
         subdomain = metadata[0]
         wildcard_engine = self.subdomains.get(WILDCARD)
-        engine = self.subdomains.get(subdomain)
+        engine: Union[Routes, None] = self.subdomains.get(subdomain)
         if not engine:
             engine = wildcard_engine if wildcard_engine else self.subdomains.get(DEFAULT)
-
         if not self._baked: self._bake_schemas()
 
-        response = await engine.handle(scope, receive, send, metadata, self)
+        try:
+            response = await engine.handle(scope, receive, send, metadata, self)  # type: ignore
+
+            # Auto-serialize dict/list bodies to JSON if not already handled
+            if isinstance(response.body, (dict, list)):
+                try:
+                    response.body = msgspec.json.encode(response.body)
+                    # Ensure Content-Type is set to application/json if missing
+                    if not any(h[0].lower() == b'content-type' for h in response.headers):
+                        response.header('Content-Type', 'application/json')
+                except Exception as e:
+                    print(f"JSON Serialization Error: {e}")
+                    response.status = 500
+                    response.body = b"Internal Server Error: JSON Serialization Failed"
+                    # Clear headers and set content-type plain
+                    response._headers = []
+                    response.header('Content-Type', 'text/plain')
+        except Exception as e:
+            if not self._debug: raise e
+            # Guardian Angel
+            from .response import _get_guardian_angel
+            # Create a dummy response/request context for the angel if needed
+            # But we need a valid request object for the template
+            # If handle failed, 'r' might not be available here, but we can reconstruct a basic one or use a dummy
+            # Actually, engine.handle creates the request. If it fails *inside* handle, we don't have reference to 'r' here
+            # unless we move the try/catch inside engine.handle or reconstruct.
+            # Best approach: catch inside engine.handle? No, that returns a response.
+            # Quickest valid object:
+            r = Request(scope, b'', receive, metadata, self)
+            c = Context(self)
+            response = Response(self, c, r)
+            _get_guardian_angel(response, e)
+        
         if scope['type'] == 'http':
             await send({'type': 'http.response.start', 'headers': response.headers, 'status': response.status})
             if hasattr(response.body, '__aiter__'):
@@ -619,33 +724,176 @@ class Router(object):
     def daemons(self, afunction):
         @wraps(afunction)
         async def _daemon(app):
-            if (iscoroutinefunction(afunction)): sleeps = await afunction(app)
-            else: sleeps = afunction(app)
+            loop = get_running_loop()
+            if (iscoroutinefunction(afunction)): 
+                sleeps = await afunction(app)
+            else: 
+                # Run sync functions in a thread pool to avoid blocking the event loop
+                sleeps = await loop.run_in_executor(None, afunction, app)
+            
             if sleeps is None or sleeps == False: return
             await asleep(sleeps)
-            loop = get_running_loop()
             loop.create_task(_daemon(app))
         self.__daemons.append(_daemon)
 
-    def keep(self, key, value):
-        self._buckets[key] = value
+    @overload
+    def keep(self, key: Key[T], value: T) -> None: ...
+    
+    @overload
+    def keep(self, key: str, value: Any) -> None: ...
 
-    def unkeep(self, key):
-        value = self._buckets[key]
-        del self._buckets[key]
+    def keep(self, key: Union[str, Key[T]], value: Any):
+        if isinstance(key, Key):
+            self._buckets[key.name] = value
+        else:
+            self._buckets[key] = value
+
+    def unkeep(self, key: Union[str, Key[T]]):
+        k = key.name if isinstance(key, Key) else key
+        value = self._buckets[k]
+        del self._buckets[k]
         return value
 
-    def peek(self, key):
-        try: value = self._buckets[key]
+    @overload
+    def peek(self, key: Key[T]) -> Union[T, None]: ...
+    
+    @overload
+    def peek(self, key: str) -> Any: ...
+
+    def peek(self, key: Union[str, Key[T]]) -> Any:
+        k = key.name if isinstance(key, Key) else key
+        try: value = self._buckets[k]
         except KeyError: return None
         else: return value
+
+
+    def plugin(self, plugin_instance):
+        """
+        Registers a plugin with the application.
+        The plugin instance must have an 'install' method which takes the app as the only argument.
+        """
+        if not hasattr(plugin_instance, 'install'):
+            raise ValueError(f"Plugin {plugin_instance.__class__.__name__} must have an 'install' method")
+        
+        plugin_instance.install(self)
+        return self
+
+    def cors(self, handler=None, **kwargs):
+        """
+        Enables Cross-Origin Resource Sharing (CORS) for the application.
+        Accepts a handler function or configuration via kwargs.
+        """
+        if handler and callable(handler):
+            self.BEFORE("/*", handler)
+            return self
+
+        # Smart key mapping
+        def get_value(key, default=None):
+            # Normalization helper: remove - and _ and lowercase
+            normalize = lambda k: k.lower().replace('-', '').replace('_', '')
+            target = normalize(key)
+            
+            # Additional semantic aliases
+            aliases = {
+                'origin': ['origins'],
+                'methods': ['method', 'allowmethods', 'allowedmethods'],
+                'headers': ['header', 'allowheaders', 'allowedheaders'],
+                'exposeheaders': ['exposeheader', 'expose', 'allowedexposeheaders'],
+                'credentials': ['allowcredentials', 'allowcreds', 'allowedcredentials'],
+                'maxage': ['maxaage', 'maxage'],
+            }
+            
+            targets = [target] + aliases.get(target, [])
+            for k, v in kwargs.items():
+                if normalize(k) in targets: return v
+            return default
+
+        origin_val = get_value('origin', '*')
+        methods_val = get_value('methods', '*')
+        headers_val = get_value('headers', '*')
+        expose_val = get_value('expose_headers', '*')
+        cred_val = get_value('credentials', False)
+        max_age_val = get_value('max_age')
+
+        async def handle_cors(req, res, ctx):
+            allow_origin = origin_val
+            if isinstance(origin_val, (list, tuple, set)):
+                req_origin = req.headers.get("origin")
+                if req_origin in origin_val:
+                    allow_origin = req_origin
+                    res.headers = "Vary", "Origin"
+                else: allow_origin = "null"
+            
+            res.headers = "Access-Control-Allow-Origin", allow_origin
+            if cred_val: res.headers = "Access-Control-Allow-Credentials", "true"
+            if expose_val: res.headers = "Access-Control-Expose-Headers", expose_val
+            
+            if req.method == "OPTIONS":
+                if max_age_val: res.headers = "Access-Control-Max-Age", max_age_val
+                res.headers = "Access-Control-Allow-Methods", methods_val
+                res.headers = "Access-Control-Allow-Headers", headers_val
+                res.status = 200
+                res.body = b""
+                res.abort(b"")
+            else:
+                # Some clients require these on normal requests too
+                res.headers = "Access-Control-Allow-Methods", methods_val
+                res.headers = "Access-Control-Allow-Headers", headers_val
+
+        self.BEFORE("/*", handle_cors)
+        return self
+
+    def sessions(self, secret_key, cookie_name="session", max_age=3600):
+        """
+        Enables secure, signed cookie-based sessions.
+        """
+        from .security import SecureSerializer
+        serializer = SecureSerializer(secret_key)
+
+        async def load_session(req, res, ctx):
+            cookie = req.cookies.get(cookie_name)
+            data = {}
+            if cookie:
+                try: data = serializer.loads(cookie, max_age=max_age)
+                except: pass
+            
+            # attach to context and wrapping in Look so attributes can be accessed via dot notation
+            # e.g. ctx.session.user_id
+            ctx.keep('session', Look(data))
+            # track initial state to avoid unnecessary writes
+            ctx._initial_session = msgspec.json.encode(data)
+
+        async def save_session(req, res, ctx):
+            if not hasattr(ctx, 'session'): return
+            
+            # Check if session was modified
+            # We access _data directly because ctx.session is a Look wrapper around the dict
+            current_data = ctx.session._data if hasattr(ctx.session, '_data') else ctx.session
+            try:
+                current = msgspec.json.encode(current_data)
+            except: return
+
+            if current == getattr(ctx, '_initial_session', b''):
+                return
+
+            # Sign and Serialize
+            token = serializer.dumps(current_data)
+            
+            # Set cookie header
+            cookie_val = f"{cookie_name}={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age={max_age}"
+            res.headers = "Set-Cookie", cookie_val
+
+        self.BEFORE("/*", load_session)
+        self.AFTER("/*", save_session)
+        return self
 
     def listen(self, host='localhost', port='8701', debug=True, **kwargs): #pragma: nocover
         run(self, host=host, port=port, debug=debug, **kwargs)
 
     def subdomain(self, subdomain: str):
-        if self.subdomains.get(subdomain): return
-        self.subdomains[subdomain] = Routes()
+        if not self.subdomains.get(subdomain):
+            self.subdomains[subdomain] = Routes()
+        return SubdomainContext(self, subdomain)
 
     def mount(self, router: 'Router', isolated = True):
         if not isolated:
@@ -669,7 +917,8 @@ class Router(object):
             for after in engine.afters:
                 self.subdomains[subdomain].afters[after] = [*engine.afters[after], *self.subdomains[subdomain].afters.get(after, [])]
             for before in engine.befores:
-                self.subdomains[subdomain].befores[before] = [*engine.befores[before], *self.subdomains[subdomain].befores.get(before, [])]
+                # Parent hooks (self) come BEFORE Child hooks (engine) for .BEFORE
+                self.subdomains[subdomain].befores[before] = [*self.subdomains[subdomain].befores.get(before, []), *engine.befores[before]]
 
     def websocket(self):
         # only if app is already running
@@ -802,19 +1051,61 @@ class Router(object):
         paths = {}
         components = {"schemas": {}}
         
-        for (method, route), meta in self.schema._schemas.items():
+        def _register_schema(schema_cls, name=None):
+            """Recursively register schemas and their definitions"""
+            if not name:
+                name = getattr(schema_cls, "__name__", "Model")
+                
+            # If already registered, return name
+            if name in components["schemas"]:
+                return name
+
+            # Generate schema
+            js = msgspec.json.schema(schema_cls)
+            
+            # Extract definitions
+            defs = js.pop("$defs", {})
+            
+            # If js is a reference to a local def, resolve it
+            if "$ref" in js and js["$ref"].startswith("#/$defs/"):
+                ref_name = js["$ref"].split("/")[-1]
+                if ref_name in defs:
+                    # The main schema IS this definition
+                    js = defs.pop(ref_name)
+            
+            # Register remaining definitions
+            for def_name, def_schema in defs.items():
+                if def_name not in components["schemas"]:
+                    components["schemas"][def_name] = def_schema
+            
+            # Register main schema
+            components["schemas"][name] = js
+            return name
+
+        for (method, route, subdomain), meta in self.schema._schemas.items():
             path_item = paths.setdefault(route, {})
+            
+            # 1. Determine Group (Tag)
+            # Priority: Explicit 'group' > First meaningful URL segment > "Default"
+            group = meta.get("group")
+            if not group:
+                # heuristic: /users/:id/orders -> users
+                parts = [p for p in route.strip("/").split("/") if p and not p.startswith(":")]
+                group = parts[0].capitalize() if parts else "Default"
+            
+            # Use provided summary or empty string
+            summary = meta.get("summary") or ""
             op = {
-                "summary": meta.get("summary") or "",
+                "tags": [group],
+                "summary": summary,
                 "description": meta.get("description") or "",
                 "responses": {"200": {"description": "Successful Response"}}
             }
             
             expects = meta.get("expects")
             if expects:
-                schema = msgspec.json.schema(expects)
-                schema_name = getattr(expects, "__name__", "Model")
-                components["schemas"][schema_name] = schema
+                # Register schema and get name
+                schema_name = _register_schema(expects)
                 op["requestBody"] = {
                     "content": {
                         "application/json": {
@@ -825,10 +1116,7 @@ class Router(object):
             
             returns = meta.get("returns")
             if returns:
-                schema = msgspec.json.schema(returns)
-                schema_name = getattr(returns, "__name__", "Model")
-                if schema_name not in components["schemas"]:
-                    components["schemas"][schema_name] = schema
+                schema_name = _register_schema(returns)
                 op["responses"]["200"] = {
                     "description": "Successful Response",
                     "content": {
@@ -850,7 +1138,7 @@ class Router(object):
             "components": components
         }
 
-    def DOCS(self, route: str, title="API Reference", version="0.0.1"):
+    def DOCS(self, route: str, title="API Reference", version="0.0.1", subdomain=DEFAULT):
         self._docs_config = {"title": title, "version": version}
         
         async def openapi_handler(req, res, ctx):
@@ -858,7 +1146,7 @@ class Router(object):
             res.body = json.dumps(self.openapi())
 
         json_path = f"{route.rstrip('/')}/openapi.json"
-        self.GET(json_path, openapi_handler)
+        self.GET(json_path, openapi_handler, subdomain=subdomain)
 
         async def docs_handler(req, res, ctx):
             res.headers = "Content-Type", "text/html"
@@ -874,7 +1162,7 @@ class Router(object):
     <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
   </body>
 </html>"""
-        self.GET(route, docs_handler)
+        self.GET(route, docs_handler, subdomain=subdomain)
 
 
 class Application(Router):...

@@ -61,12 +61,11 @@ def private(resource: str):
 Use `router.schema` to define your API contracts and `router.DOCS` to generate interactive documentation.
 
 ```py
-import msgspec
-from heaven import App
+from heaven import App, Schema
 
 app = App()
 
-class User(msgspec.Struct):
+class User(Schema):
     id: int
     email: str
     role: str = "guest"

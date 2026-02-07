@@ -2,7 +2,7 @@
 
 **Heaven** is the absolute minimal, insanely fast [ASGI](https://asgi.readthedocs.io) web framework for Python purists. It doesn't just get out of your way; it vanishes, leaving you with raw performance and total control.
 
-> "Mastery in 10 minutes or less. No grey spots, just pure Python."
+> "Mastery in 30 minutes or less. No grey spots, just pure Python."
 
 <hr/>
 
@@ -10,7 +10,7 @@
 
 | Feature | Heaven | FastAPI | Flask | Django |
 | :--- | :---: | :---: | :---: | :---: |
-| **Learning Curve** | 10 Mins | High | Low | Extreme |
+| **Learning Curve** | 30 Mins | High | Low | Extreme |
 | **Performance** | ⚡⚡⚡ | ⚡⚡ | ⚡ | 🐢 |
 | **Boilerplate** | Zero | Medium | Low | Massive |
 | **Mastery** | Complete | Partial | High | Low |
@@ -39,7 +39,8 @@ app = App()
 # Centralized Auth / Pre-processing
 async def auth(req, res, ctx):
     if not req.headers.get('Authorization'):
-        res.abort('Unauthorized', status=401)
+        res.status = 401
+        res.abort('Unauthorized')
 
 app.BEFORE('/api/*', auth)
 
@@ -49,15 +50,31 @@ async def welcome(req, res, ctx):
 
 app.GET('/api/v1/welcome', welcome)
 
-# Automatic OpenAPI Docs
-from msgspec import Struct
-class User(Struct):
+3. **Protect** (Automatic OpenAPI)
+```python
+from heaven import Schema
+
+class User(Schema):
     name: str
 
 app.schema.POST('/user', expects=User, summary="Create User")
 app.DOCS('/docs')
+```
 
-# Background Daemon (Native Periodic Tasks)
+4. **Fly** (CLI)
+Heaven comes with a beautiful, zero-config CLI.
+```bash
+pip install heaven
+
+# Auto-discovery & run with reload
+heaven fly
+
+# Visualize your API structure
+heaven routes
+```
+
+5. **Daemon** (Background)
+```python
 async def pulse(app):
     print("Heartbeat...")
     return 5 # Run every 5 seconds
@@ -65,7 +82,7 @@ async def pulse(app):
 app.daemons = pulse
 ```
 
-3. **Run**
+6. **Run** (Standard)
 ```sh
 $ uvicorn app:app --reload
 ```

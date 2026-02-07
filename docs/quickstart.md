@@ -1,64 +1,64 @@
-# Minute 1
-We are assuming you have installed heaven via `pip install heaven`. If no, then go ahead and install it; If you have, then **the clock is ticking so** let's dive in.
+# Minute 1: The Beginning ⚡
 
-----------------------
+The clock is ticking. 60 seconds to a running server.
 
-##### 1. Create a handler function
+## Installation
 
-In a file of your choosing: i.e. `controllers.py` or `src/controllers/customers.py`
-```python
-import json
-from http import HTTPStatus
-
-from heaven import Request, Response, Context
-
-async def get_one_customer(req: Request, res: Response, ctx: Context):
-	id = req.params.get('id')
-	res.status = HTTPStatus.CREATED
-	res.body = json.dumps({"message": f"heaven is easy for customer {id}"})
+```bash
+$ pip install heaven
 ```
 
-As you can see above - your handler functions can also be async, and must accept 3 arguments that will be injected by heaven. We'll get to
-them in [Minute 2](request.md), [Minute 3](response.md) and [Minute 4](context.md).
+## The First Move
 
------------------------
-
-##### 2. Connect your handler to the heaven application
-
-Heaven wants your application and development time to be fast so you don't need to import handler functions, just
-tell your `router`, `application` where your handler function lives and heaven will load it for you.
-
-Of course you can still import it explicitly if you are an extreme purist ;-)
+Create a file named `app.py`:
 
 ```python
-from heaven import Router
+from heaven import App
 
-# create the application
-router = Router()
+app = App()
 
-# a string path to the python module and function name is enough
-# as you can imagine this saves you time with manual imports
-# if you have a lot of handlers in your project
-router.GET('/v1/customers/:id', 'controllers.customers.get_one_customer')
+# Handlers receive 3 arguments: Request, Response, Context
+async def hello(req, res, ctx):
+    res.body = "Hello from Heaven"
+
+# Map the URL '/' to the 'hello' handler
+app.GET('/', hello)
 ```
 
-All HTTP methods i.e. `GET`, `POST` etc. are all supported
+!!! tip "Pro Tip: Developer Speed"
+    As your application grows, importing hundreds of handlers at the top of your file becomes tedious. Heaven lets you pass the **import path as a string**.
+    
+    ```python
+    # Heaven lazy-loads this module only when needed! 
+    # No more giant import lists.
+    app.GET('/profile', 'handlers.users.get_profile')
+    ```
 
------------------------
+## Lift Off
 
-##### 3. Run With Gunicorn or Uvicorn
+In your terminal, run:
 
-```sh
-# assuming your my_app.py is in a file called app.py
-uvicorn my_app:router  --reload --port 9000
-
-# or
-
-gunicorn -w 4 -k uvicorn.workers.UvicornWorker application:router
+```bash
+$ heaven fly
 ```
 
------------------------
+OR
 
-&nbsp;
+```bash
+$ heaven run app:app
+```
 
-[Next: Requests to Heaven](request.md)
+You should see:
+```
+INFO:     Started server process [1234]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+```
+
+Open your browser to `http://localhost:8000`. 
+Congratulations. Only 28 minutes left.
+
+---
+
+**Next:** You're flying, but now let's take control. On to **[The Command Line](cli.md)**.

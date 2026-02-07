@@ -37,6 +37,13 @@ def test_response_status():
     response.status = status.NOT_ACCEPTABLE
     assert(response.status == status.NOT_ACCEPTABLE)
 
+def test_response_http_proxy():
+    assert response.http == status
+    assert response.http.OK == 200
+    assert response.http.NOT_FOUND == 404
+    response.status = response.http.CREATED
+    assert response.status == 201
+
 def test_response_cookie_bad():
     try:
        response.cookie('authorization', 'Bearer 123', expires='2022-12-12', secure=False, SameSite='strict')
@@ -77,7 +84,7 @@ def test_response_body_encodings():
 
 def test_get_guardian_angel_html():
     res = Response(app=router, context=context, request=request)
-    _get_guardian_angel(res, 'some error', 'some snippet')
+    _get_guardian_angel(res, ValueError('some error'))
     assert res.headers == [(b'Content-Type', b'text/html')]
     assert res.status == status.INTERNAL_SERVER_ERROR
     assert isinstance(res.body, bytes)

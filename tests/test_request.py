@@ -99,3 +99,16 @@ class TestRequest(TestCase):
     @skip
     def test_stream(self):
         stream = self.request.stream()
+
+    def test_generic_schema_data(self):
+        import msgspec
+        class User(msgspec.Struct):
+            name: str
+        
+        self.request._schema = User
+        self.request._body = b'{"name": "test"}'
+        self.request._data = None # reset data
+        
+        data = self.request.data
+        self.assertIsInstance(data, User)
+        self.assertEqual(data.name, "test")

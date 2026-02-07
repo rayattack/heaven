@@ -1,16 +1,18 @@
 from datetime import datetime, date
-from typing import Any, TYPE_CHECKING
+from typing import Any, TYPE_CHECKING, Union, TypeVar, Generic
 from uuid import UUID
 from urllib.parse import parse_qs
 
 from heaven.form import Form
 from heaven.utils import Lookup
+import msgspec
 
 if TYPE_CHECKING:
     from heaven import Router
 
+T = TypeVar("T")
 
-class Request:
+class Request(Generic[T]):
     def __init__(self, scope, body, receive, metadata=None, application=None):
         self._application = application
         self._body = body
@@ -25,12 +27,27 @@ class Request:
         self._params = None
         self._queries = None
         self._data = None
+        self._schema = None
         self._dirty = False
         self._queried = False
         self._mounted_from_application = None
 
     @property
-    def data(self):
+    def json(self):
+        """Returns the json body of the request"""
+        if not self._body: return None
+        return msgspec.json.decode(self._body)
+
+    @property
+    def data(self) -> T:
+        """Returns the validated data from the request body as per schema definition"""
+        if self._data is not None: return self._data
+        if not self._body: return None  # type: ignore
+        
+        # If no schema was provided, behavior is same as req.json
+        if not self._schema: return self.json
+        
+        self._data = msgspec.json.decode(self._body, type=self._schema)
         return self._data
 
     def _parse_qs(self):
@@ -81,7 +98,7 @@ class Request:
         return self._cookies
 
     @property
-    def form(self) -> "Form":
+    def form(self) -> Union["Form", None]:
         content_type = self.headers.get("content-type", "")
         if not ("multipart/form-data" in content_type or "application/x-www-form-urlencoded" in content_type):
             return None
@@ -96,7 +113,9 @@ class Request:
         if not self._headers:
             self._headers = {}
             for header in self._scope.get("headers"):
-                self._headers[header[0]] = header[1]
+                key = header[0].decode() if isinstance(header[0], bytes) else header[0]
+                value = header[1].decode() if isinstance(header[1], bytes) else header[1]
+                self._headers[key] = value
         return self._headers
 
     @property
@@ -119,7 +138,7 @@ class Request:
         booleans = {'false': False, 'true': True, '1': True, 0: False}
         def boolean(v: str) -> bool:
             if not isinstance(v, str): return False
-            return booleans.get(v.lower())
+            return booleans.get(v.lower()) or False
         kinds = {
             'int': int,
             'str': str,
@@ -193,10 +212,6 @@ class Request:
     @property
     def querystring(self):
         return self._scope.get("query_string", "")
-
-    @property
-    def scheme(self):
-        return self._scope.get("scheme")
 
     @property
     def subdomain(self):

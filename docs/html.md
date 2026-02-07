@@ -1,35 +1,68 @@
-# Minute 6: Rendering HTML
-Heaven uses [Jinja](https://jinja.palletsprojects.com/en/3.1.x/) as its templating engine. This however
-does not stop you from rolling your own preferred template engine.
+# Templating & Files
 
-You can render html templates in `asynchronous` or `asyncrhonous=False` modes.
+Heaven uses [Jinja2](https://jinja.palletsprojects.com/) for templating, but keeps it async and non-blocking.
 
-```py
-from routerling import Application
+## Serving Static Files
 
-application = Application()
+First, let's serve your CSS and images.
 
-# application.TEMPLATES('my/templates/folder', asynchronous=False)
-application.TEMPLATES('my/templates/folder')  # asynchronous=True
+```python
+# Map /static to 'assets' folder
+# 'OR' serve everything in 'assets' folder at '/static' URL
+app.ASSETS('/static', 'assets')
+```
 
+Now `assets/logo.png` is available at `http://localhost:8000/static/logo.png`.
 
+## Enabling Templates
+
+Tell Heaven where your templates live.
+
+```python
+# 'templates' is the folder name
+app.TEMPLATES('templates')
+```
+
+## Rendering HTML
+
+You can render templates asynchronously.
+
+```python
 async def index(req, res, ctx):
-    ctx.keep('message', 'Hello world!')
-    await res.render('index.html', req=req, my_name='Santa')
-
-
-application.GET('/', index)
+    ctx.keep('user_name', 'Visitor')
+    
+    # Render 'index.html'
+    # You can pass extra variables directly (e.g. title)
+    await res.render('index.html', title="Welcome Home")
 ```
 
-<hr />
-In your `index.html` file `Note:` heaven will inject `ctx` automatically:
+### Automatic Context
+
+Heaven automatically injects the three musketeer objects into **every** template:
+
+- `req`: The current Request object `a.k.a` **Portos**.
+- `res`: The current Response object `a.k.a` **Athos**.
+- `ctx`: The current Context object `a.k.a` **Aramis**.
+
+> PS: D'Artagnan is not a musketeer but in the spirit of camarederie he can be the **Router**
+
+**In your `index.html`:**
+
 ```html
-<h1>{{ ctx.message }}</h1><!-- injected by heaven automatically -->
-<p>{{ my_name }}</p><!-- you injected this manually -->
+<!-- Access variables from ctx -->
+<h1>Hello, {{ ctx.user_name }}</h1>
+
+<!-- Access request info -->
+<p>You are visiting: {{ req.url }}</p>
+
+<!-- Access response info -->
+<p>Status: {{ res.status }}</p>
+
+<!-- Access passed variables -->
+<title>{{ title }}</title>
 ```
 
-You can also pass additional arguments `response.render('', *args)` the rendered template as is.
-
-For more see [tutorial - how to use Jinja](https://jinja.palletsprojects.com/en/3.1.x/).
+---
 
 
+**Next:** We've covered the basics. Now let's superpower your app with Schemas. On to **[Interceptors](hooks.md)**.

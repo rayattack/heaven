@@ -344,6 +344,13 @@ class RouterTest(TestCase):
         self.assertEqual(self.router.peek('bucket'), 100)
         self.assertEqual(self.router.unkeep('bucket'), 100)
         self.assertRaises(KeyError, self.router.unkeep, 'bucket')
+
+        from heaven.context import Key
+        k = Key[str]("typed")
+        self.router.keep(k, "value")
+        self.assertEqual(self.router.peek(k), "value")
+        self.assertEqual(self.router.unkeep(k), "value")
+        self.assertIsNone(self.router.peek(k))
     
     def test_peek(self):
         self.assertIsNone(self.router.peek('blah'))

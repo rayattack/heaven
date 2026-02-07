@@ -2,6 +2,9 @@ import mimetypes
 from http import HTTPStatus
 from os import path
 from typing import Any, AsyncGenerator, Optional, Union, TYPE_CHECKING
+import msgspec
+import traceback
+import sys
 
 from functools import singledispatch, update_wrapper
 
@@ -10,7 +13,7 @@ from .context import Context
 from .tutorials import get_guardian_angel_html, ASYNC_RENDER, NO_TEMPLATING, SYNC_RENDER
 from .request import Request
 if TYPE_CHECKING:
-    from router import App  # pragma: no cover
+    from router import App, Router  # pragma: no cover
 
 
 # For compatibility with older versions of python3 using this
@@ -19,7 +22,7 @@ def MethodDispatch(method):
     decorated = singledispatch(method)
     def decorator(*args, **kwargs):
         return decorated.dispatch(args[1].__class__)(*args, **kwargs)
-    decorator.register = decorated.register
+    decorator.register = decorated.register # type: ignore
     update_wrapper(decorator, method)
     return decorator
 
@@ -46,10 +49,11 @@ def _(payload):
         return payload
     return payload
 
-def _get_guardian_angel(res: 'Response', error: str, snippet: str):
+def _get_guardian_angel(res: 'Response', exc: Exception):
     res.headers = 'Content-Type', 'text/html'
     res.status = HTTPStatus.INTERNAL_SERVER_ERROR
-    res.body = get_guardian_angel_html(error, snippet)
+    tb = traceback.format_exc()
+    res.body = get_guardian_angel_html(res._req, exc, tb)
 
 
 class Response():
@@ -64,20 +68,20 @@ class Response():
         self._headers = []
         self._status = STATUS_NOT_FOUND
         self._template = None
-        self._mounted_from_application = None
+        self._mounted_from_application : Union['Router', None] = None
 
     @MethodDispatch
     def abort(self, payload):
         self._abort = True
         self._body = payload
 
-    @abort.register(str)
+    @abort.register(str) # type: ignore
     def _(self, payload: str):
         self._abort = True
         self._body = payload.encode()
 
-    @abort.register(int)
-    @abort.register(float)
+    @abort.register(int) # type: ignore
+    @abort.register(float) # type: ignore
     def _(self, payload):
         self._abort = True
         self._body = f'{payload}'.encode()
@@ -102,14 +106,20 @@ class Response():
     def json(self) -> Any:
         if isinstance(self.body, (dict, list)):
             return self.body
-        import json
-        return json.loads(self.body)
+        return msgspec.json.decode(self.body)
 
     @property
     def text(self) -> str:
         return self.body.decode()
 
+    @property
+    def http(self):
+        return HTTPStatus
+
     def header(self, key, val) -> 'Response':
+        if isinstance(val, (list, tuple, set)): val = ', '.join(map(str, val))
+        else: val = str(val)
+
         _encode = lambda k: k.encode('utf-8') if isinstance(k, str) else k
         value = _encode(key), _encode(val)
         self._headers.append(value)
@@ -172,10 +182,12 @@ class Response():
         self.headers = 'content-type', 'text/html; charset=utf-8'
         # if self._mounted_from_application: templater = self._mounted_from_application._templater or templater
         if not templater:
-            return _get_guardian_angel(self, 'You did not enable templating', NO_TEMPLATING)
+            _get_guardian_angel(self, ValueError('Templating not enabled. Call app.TEMPLATES() first.'))
+            return self
 
         if not templater.is_async:
-            return _get_guardian_angel(self, 'Trying to use Sync HTML Renderer to render HTML Async', ASYNC_RENDER)
+            _get_guardian_angel(self, RuntimeError('Trying to use Sync HTML Renderer to render HTML Async'))
+            return self
 
         template = templater.get_template(name)
         self.body = await template.render_async({'ctx': self._ctx, 'res': self, 'req': self._req, **contexts})
@@ -186,10 +198,12 @@ class Response():
         templater = self._app._templater
         self.headers = 'content-type', 'text/html; charset=utf-8'
         if not templater:
-            return _get_guardian_angel(self, 'You did not enable templating', NO_TEMPLATING)
+            _get_guardian_angel(self, ValueError('Templating not enabled. Call app.TEMPLATES() first.'))
+            return self
 
         if templater.is_async:
-            return _get_guardian_angel(self, 'Trying to use Async HTML Renderer to render Sync HTML', SYNC_RENDER)
+            _get_guardian_angel(self, RuntimeError('Trying to use Async HTML Renderer to render Sync HTML'))
+            return self
         template = templater.get_template(name)
         self.body = template.render({'ctx': self._ctx, 'res': self, 'req': self._req, **contexts})
         return self
@@ -207,6 +221,31 @@ class Response():
     @status.setter
     def status(self, value: int) -> 'Response':
         self._status = value
+        return self
+
+    def stream(self, generator, content_type='text/plain', status=200, sse=False) -> 'Response':
+        """Stream data back to the client using an async generator"""
+        self.status = status
+        
+        if sse:
+            self.headers = 'Content-Type', 'text/event-stream'
+            self.headers = 'Cache-Control', 'no-cache'
+            self.headers = 'Connection', 'keep-alive'
+            self.headers = 'X-Accel-Buffering', 'no'  # Disable Nginx buffering
+            
+            async def sse_wrapper():
+                async for item in generator:
+                    # If item is a dict or list, encode as JSON
+                    if isinstance(item, (dict, list)):
+                        item = msgspec.json.encode(item).decode()
+                    yield f"data: {item}\n\n".encode()
+            self.body = sse_wrapper()
+        else:
+            self.headers = 'Content-Type', content_type
+            self.headers = 'Cache-Control', 'no-cache'
+            self.headers = 'Transfer-Encoding', 'chunked'
+            self.body = generator
+            
         return self
 
     @property
@@ -258,4 +297,3 @@ class Response():
         self.body = file_sender()
         self.status = HTTPStatus.OK
         return self
-
