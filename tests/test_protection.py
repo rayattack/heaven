@@ -49,12 +49,10 @@ class TestProtection(unittest.IsolatedAsyncioTestCase):
         
         res = await self.mock_handle('POST', '/user', handler, {'returns': User})
         
-        # Data should be protected (extra dropped) and encoded to JSON
         data = loads(res.body)
         self.assertEqual(data["id"], 1)
         self.assertEqual(data["name"], "ray")
-        # Pytastic preserves extras by default
-        self.assertIn("extra", data)
+        self.assertNotIn("extra", data)
         self.assertEqual(res.status, 200)
 
     async def test_protection_missing_fields_strict(self):
@@ -102,8 +100,8 @@ class TestProtection(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(data), 2)
         self.assertEqual(data[0]["id"], 1)
         self.assertEqual(data[0]["name"], "ray")
-        # Pytastic preserves extras by default
-        self.assertIn("extra", data[0])
+        # Pytastic strips extras from list items when strip=True propagates
+        self.assertNotIn("extra", data[0])
 
 
 if __name__ == '__main__':

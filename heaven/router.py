@@ -191,10 +191,6 @@ class Route(object):
 
         # time to process what parameters we saw
         for parameter in parameters: r.params = parameter.resolve(node.route)
-
-        # default node.route is None and handler as well
-        # so this returns None if no route encountered or what
-        # was encountered in while block above
         r.qh = node.queryhint
         return node.route, node.handler
 
@@ -578,31 +574,19 @@ class Router(object):
                 
                 async def output_hook(req, res, ctx, schema=returns, protect=protect, partial=partial, strict=strict):
                     if res.body is None or res._abort: return
-                    # Skip if body is already bytes/generator (user manually handled it)
                     if isinstance(res.body, (bytes, str)) or hasattr(res.body, '__aiter__'): return
+
                     try:
-                        # 1. Clean if enabled
-                        if protect:
-                            res.body = self._pytastic.validate(schema, res.body)
-                        
-                        # 2. Encode to JSON
+                        if protect or partial:
+                            res.body = self._pytastic.validate(schema, res.body, strip=protect, partial=partial)
+
                         res.headers = "Content-Type", "application/json"
                         res.body = dumps(res.body)
                     except Exception as e:
-                        # If partial matching is enabled, we might want to try encoding without conversion if conversion failed
-                        if partial and protect:
-                            try:
-                                res.headers = "Content-Type", "application/json"
-                                res.body = dumps(res.body)
-                                return # Success with partial (original data)
-                            except: pass
-
                         if strict:
                             res.status = 500
                             res.body = f"Output Validation Error: {str(e)}".encode()
                         else:
-                            print(f"Heaven Output Warning [{req.route}]: {str(e)}")
-                            # Fallback to normal encoding
                             res.headers = "Content-Type", "application/json"
                             res.body = dumps(res.body)
                 
@@ -633,8 +617,6 @@ class Router(object):
 
         try:
             response = await engine.handle(scope, receive, send, metadata, self)  # type: ignore
-
-            # Auto-serialize dict/list bodies to JSON if not already handled
             if isinstance(response.body, (dict, list)):
                 try:
                     response.body = dumps(response.body)
@@ -652,13 +634,6 @@ class Router(object):
             if not self._debug: raise e
             # Guardian Angel
             from .response import _get_guardian_angel
-            # Create a dummy response/request context for the angel if needed
-            # But we need a valid request object for the template
-            # If handle failed, 'r' might not be available here, but we can reconstruct a basic one or use a dummy
-            # Actually, engine.handle creates the request. If it fails *inside* handle, we don't have reference to 'r' here
-            # unless we move the try/catch inside engine.handle or reconstruct.
-            # Best approach: catch inside engine.handle? No, that returns a response.
-            # Quickest valid object:
             r = Request(scope, b'', receive, metadata, self)
             c = Context(self)
             response = Response(self, c, r)
