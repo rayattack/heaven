@@ -1,12 +1,14 @@
 import os
 import json
-import msgspec
+from typing import TypedDict
 from unittest import IsolatedAsyncioTestCase
+
 from heaven import App, Request, Response, Context
 from heaven.mocks import _get_mock_receiver
 from http import HTTPStatus
+from orjson import dumps, loads
 
-class User(msgspec.Struct):
+class User(TypedDict):
     id: int
     name: str
 
@@ -16,7 +18,7 @@ class SchemaTest(IsolatedAsyncioTestCase):
 
     async def test_schema_validation_success(self):
         async def handler(req, res, ctx):
-            res.body = json.dumps({"received": req.data.name}).encode()
+            res.body = dumps({"received": req.data['name']})
 
         self.app.POST("/users", handler)
         self.app.schema.POST("/users", expects=User)
@@ -25,10 +27,11 @@ class SchemaTest(IsolatedAsyncioTestCase):
             'type': 'http',
             'method': 'POST',
             'path': '/users',
+            'client': ('127.0.0.1', 8000),
             'headers': [[b'content-type', b'application/json']]
         }
         
-        body = json.dumps({"id": 1, "name": "Raymond"}).encode()
+        body = dumps({"id": 1, "name": "Raymond"})
         
         async def receive():
             return {'type': 'http.request', 'body': body, 'more_body': False}
@@ -44,7 +47,7 @@ class SchemaTest(IsolatedAsyncioTestCase):
         self.assertEqual(start_msg['status'], 200)
         
         body_msg = next(r for r in results if r['type'] == 'http.response.body')
-        self.assertEqual(json.loads(body_msg['body']), {"received": "Raymond"})
+        self.assertEqual(loads(body_msg['body']), {"received": "Raymond"})
 
     async def test_schema_validation_failure(self):
         async def handler(req, res, ctx):
@@ -57,11 +60,12 @@ class SchemaTest(IsolatedAsyncioTestCase):
             'type': 'http',
             'method': 'POST',
             'path': '/users',
+            'client': ('127.0.0.1', 8000),
             'headers': [[b'content-type', b'application/json']]
         }
         
         # Missing 'id'
-        body = json.dumps({"name": "Raymond"}).encode()
+        body = dumps({"name": "Raymond"})
         
         async def receive():
             return {'type': 'http.request', 'body': body, 'more_body': False}
@@ -94,6 +98,7 @@ class SchemaTest(IsolatedAsyncioTestCase):
             'type': 'http',
             'method': 'GET',
             'path': '/api/docs/openapi.json',
+            'client': ('127.0.0.1', 8000),
             'headers': []
         }
         

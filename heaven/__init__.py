@@ -3,8 +3,8 @@ from .router import Router
 from .router import Server
 from .request import Request
 from .response import Response
-from .schema import Schema, Constraints, Field
+from .schema import Pytastic, PytasticError, ValidationError
 from .context import Context, Key
 
 
-__version__ = '1.3.7'
+__version__ = '1.3.8'

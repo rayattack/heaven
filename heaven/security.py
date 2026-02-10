@@ -5,7 +5,10 @@ import time
 import struct
 import typing
 from secrets import compare_digest
-import msgspec
+from typing import Union, Optional
+from orjson import dumps, loads, JSONDecodeError
+from pytastic import Pytastic
+from pytastic.exceptions import ValidationError
 
 # --- Custom Exceptions ---
 class SecurityError(Exception):
@@ -39,11 +42,6 @@ class SecureSerializer:
         self.salt = salt.encode('utf-8')
         self.digest_method = digest_method
         
-        # Pre-instantiate the msgspec Encoder/Decoder for maximum speed.
-        # We assume strict compliance, but you can relax this if needed.
-        self._encoder = msgspec.json.Encoder()
-        self._decoder = msgspec.json.Decoder()
-
     def _derive_key(self, secret_key: bytes) -> bytes:
         return hmac.new(secret_key, self.salt, self.digest_method).digest()
 
@@ -60,14 +58,11 @@ class SecureSerializer:
 
     def dumps(self, obj: typing.Any) -> str:
         """
-        Serializes using msgspec, signs, and timestamps.
+        Serializes using json, signs, and timestamps.
         """
-        # 1. Serialize Data (msgspec returns bytes directly - FAST)
-        # Note: We catch msgspec encoding errors if the object isn't serializable
-        try:
-            json_bytes = self._encoder.encode(obj)
-        except TypeError as e:
-            raise SecurityError(f"Serialization failed: {e}")
+        # 1. Serialize Data
+        try: json_bytes = dumps(obj)
+        except TypeError as e: raise SecurityError(f"Serialization failed: {e}")
 
         # 2. Create Timestamp
         timestamp = int(time.time())
@@ -85,9 +80,9 @@ class SecureSerializer:
 
     def loads(self, token: typing.Union[str, bytes], max_age: int = None, type: typing.Type = None) -> typing.Any:
         """
-        Verifies token and decodes using msgspec.
+        Verifies token and decodes using json.
         
-        :param type: Optional msgspec.Struct type for strict schema validation.
+        :param type: Optional Type for Pytastic validation.
         """
         if isinstance(token, str):
             token = token.encode('utf-8')
@@ -122,19 +117,23 @@ class SecureSerializer:
             if age > max_age:
                 # Try to decode mainly for the error message context
                 try:
-                    data = self._decoder.decode(self._base64_decode(b64_data))
+                    data = loads(self._base64_decode(b64_data).decode('utf-8'))
                 except:
                     data = None
                 raise SignatureExpired(f"Token expired {age} seconds ago", payload=data, date_signed=timestamp)
 
-        # --- DECODE DATA (msgspec) ---
+        # --- DECODE DATA ---
         try:
-            raw_json = self._base64_decode(b64_data)
+            raw_json = self._base64_decode(b64_data).decode('utf-8')
+            data = loads(raw_json)
+            
             if type:
                 # Strict Schema Validation if type is provided
-                return msgspec.json.decode(raw_json, type=type)
+                return Pytastic().validate(type, data)
             else:
                 # Generic decoding (returns dict/list)
-                return self._decoder.decode(raw_json)
-        except msgspec.DecodeError as e:
+                return data
+        except JSONDecodeError as e:
             raise BadSignature(f"Payload JSON corrupted: {e}")
+        except ValidationError as e:
+            raise BadSignature(f"Validation failed: {e}")

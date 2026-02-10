@@ -1,11 +1,12 @@
 import os
 import sys
+import shutil
 import importlib
 import inspect
 import argparse
 from typing import Optional, Any
 import uvicorn
-import json
+import orjson as json
 from functools import partial
 from rich.syntax import Syntax
 from rich.console import Console
@@ -230,8 +231,8 @@ def schema(output: str = "swagger.json", app_path: Optional[str] = None):
         app = getattr(module, obj_name)
         
         spec = app.openapi()
-        with open(output, 'w') as f:
-            json.dump(spec, f, indent=2)
+        with open(output, 'wb') as f:
+            f.write(json.dumps(spec, option=json.OPT_INDENT_2))
             
         console.print(f"[bold green]Success![/bold green] OpenAPI spec exported to [bold cyan]{output}[/bold cyan]")
     except Exception as e:

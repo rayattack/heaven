@@ -5,7 +5,9 @@ from urllib.parse import parse_qs
 
 from heaven.form import Form
 from heaven.utils import Lookup
-import msgspec
+from orjson import dumps, loads
+from pytastic import Pytastic
+
 
 if TYPE_CHECKING:
     from heaven import Router
@@ -36,7 +38,7 @@ class Request(Generic[T]):
     def json(self):
         """Returns the json body of the request"""
         if not self._body: return None
-        return msgspec.json.decode(self._body)
+        return loads(self._body)
 
     @property
     def data(self) -> T:
@@ -47,7 +49,10 @@ class Request(Generic[T]):
         # If no schema was provided, behavior is same as req.json
         if not self._schema: return self.json
         
-        self._data = msgspec.json.decode(self._body, type=self._schema)
+        # Use the app's shared pytastic instance if available
+        if self.app and hasattr(self.app, '_pytastic'):
+            self._data = self.app._pytastic.validate(self._schema, self.json)
+        else: self._data = Pytastic().validate(self._schema, self.json)
         return self._data
 
     def _parse_qs(self):

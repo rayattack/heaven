@@ -2,11 +2,11 @@ import mimetypes
 from http import HTTPStatus
 from os import path
 from typing import Any, AsyncGenerator, Optional, Union, TYPE_CHECKING
-import msgspec
 import traceback
 import sys
 
 from functools import singledispatch, update_wrapper
+from orjson import dumps, loads
 
 from .constants import MESSAGE_NOT_FOUND, STATUS_NOT_FOUND
 from .context import Context
@@ -106,7 +106,7 @@ class Response():
     def json(self) -> Any:
         if isinstance(self.body, (dict, list)):
             return self.body
-        return msgspec.json.decode(self.body)
+        return loads(self.body)
 
     @property
     def text(self) -> str:
@@ -237,7 +237,7 @@ class Response():
                 async for item in generator:
                     # If item is a dict or list, encode as JSON
                     if isinstance(item, (dict, list)):
-                        item = msgspec.json.encode(item).decode()
+                        item = dumps(item)
                     yield f"data: {item}\n\n".encode()
             self.body = sse_wrapper()
         else:

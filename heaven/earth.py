@@ -1,7 +1,9 @@
 import asyncio
-import json
+import os
+import orjson as json
 import random
 import string
+from http import HTTPStatus
 from typing import Union, Any, Dict, Optional, Tuple
 from .constants import DEFAULT, GET, POST, PUT, DELETE, PATCH, WILDCARD
 from .mocks import _listify_headers, MockRequest, MockResponse, MockContext
@@ -53,7 +55,7 @@ class Earth:
         final_headers = {**self._session_headers, **(headers or {})}
         
         if isinstance(body, (dict, list)):
-            body = json.dumps(body).encode()
+            body = json.dumps(body)
             final_headers.setdefault('content-type', 'application/json')
         elif isinstance(body, str):
             body = body.encode()

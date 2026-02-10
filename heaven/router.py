@@ -9,15 +9,16 @@ from typing import Any, Callable, Tuple, Union, overload, TypeVar, Generic
 
 T = TypeVar("T")
 
-import json
 import mimetypes
-import msgspec
+from pytastic import Pytastic
+from pytastic.exceptions import ValidationError
 from aiofiles import open as async_open_file
 import time
 import asyncio
 import logging
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from uvicorn import run
+from orjson import dumps, loads
 
 from .constants import (
     CONNECT,
@@ -259,7 +260,7 @@ class Routes(object):
             if remainder: route_node.parameterized[route] = remainder
 
             if index == stop_at:
-                assert route_node.handler is None, f'Handler already registered for route: ${_heaven}'
+                assert route_node.handler is None, f'Handler already registered for route: {route}'
                 route_node.route = route
                 route_node.handler = handler
                 route_node.queryhint = queryhint
@@ -536,6 +537,8 @@ class Router(object):
                 if lag > monitor: logger.warning(f"Event Loop Blocked! Lag: {lag:.4f}s")
                 return monitor
             self.__daemons.append(_watchdog)
+        
+        self._pytastic = Pytastic()
 
     @property
     def _(self):
@@ -552,12 +555,11 @@ class Router(object):
         if self._baked: return
         for (method, route, subdomain), meta in self.schema._schemas.items():
             expects = meta.get('expects')
-            if expects and hasattr(expects, '__struct_fields__'):
-                decoder = msgspec.json.Decoder(expects)
-                async def validate_hook(req, res, ctx, dec=decoder):
+            if expects:
+                async def validate_hook(req, res, ctx, schema=expects):
                     try:
-                        req._data = dec.decode(req.body)
-                    except msgspec.ValidationError as e:
+                        req._data = self._pytastic.validate(schema, req.json)
+                    except ValidationError as e:
                         res.status = 422
                         res.body = str(e).encode()
                         res.abort(res.body)
@@ -577,23 +579,21 @@ class Router(object):
                 async def output_hook(req, res, ctx, schema=returns, protect=protect, partial=partial, strict=strict):
                     if res.body is None or res._abort: return
                     # Skip if body is already bytes/generator (user manually handled it)
-                    if isinstance(res.body, (bytes, str)) or hasattr(res.body, '__aiter__'):
-                        return
-
+                    if isinstance(res.body, (bytes, str)) or hasattr(res.body, '__aiter__'): return
                     try:
-                        # 1. Clean if enabled - msgspec.convert drops extra fields by default
+                        # 1. Clean if enabled
                         if protect:
-                            res.body = msgspec.convert(res.body, type=schema)
+                            res.body = self._pytastic.validate(schema, res.body)
                         
                         # 2. Encode to JSON
                         res.headers = "Content-Type", "application/json"
-                        res.body = msgspec.json.encode(res.body)
+                        res.body = dumps(res.body)
                     except Exception as e:
                         # If partial matching is enabled, we might want to try encoding without conversion if conversion failed
                         if partial and protect:
                             try:
                                 res.headers = "Content-Type", "application/json"
-                                res.body = msgspec.json.encode(res.body)
+                                res.body = dumps(res.body)
                                 return # Success with partial (original data)
                             except: pass
 
@@ -604,7 +604,7 @@ class Router(object):
                             print(f"Heaven Output Warning [{req.route}]: {str(e)}")
                             # Fallback to normal encoding
                             res.headers = "Content-Type", "application/json"
-                            res.body = msgspec.json.encode(res.body)
+                            res.body = dumps(res.body)
                 
                 self.AFTER(route, output_hook, subdomain=subdomain)
         self._baked = True
@@ -637,7 +637,7 @@ class Router(object):
             # Auto-serialize dict/list bodies to JSON if not already handled
             if isinstance(response.body, (dict, list)):
                 try:
-                    response.body = msgspec.json.encode(response.body)
+                    response.body = dumps(response.body)
                     # Ensure Content-Type is set to application/json if missing
                     if not any(h[0].lower() == b'content-type' for h in response.headers):
                         response.header('Content-Type', 'application/json')
@@ -861,7 +861,7 @@ class Router(object):
             # e.g. ctx.session.user_id
             ctx.keep('session', Look(data))
             # track initial state to avoid unnecessary writes
-            ctx._initial_session = msgspec.json.encode(data)
+            ctx._initial_session = dumps(data)
 
         async def save_session(req, res, ctx):
             if not hasattr(ctx, 'session'): return
@@ -870,7 +870,7 @@ class Router(object):
             # We access _data directly because ctx.session is a Look wrapper around the dict
             current_data = ctx.session._data if hasattr(ctx.session, '_data') else ctx.session
             try:
-                current = msgspec.json.encode(current_data)
+                current = dumps(current_data)
             except: return
 
             if current == getattr(ctx, '_initial_session', b''):
@@ -1061,9 +1061,16 @@ class Router(object):
                 return name
 
             # Generate schema
-            js = msgspec.json.schema(schema_cls)
+            try:
+                # Pytastic returns a JSON string, so we need to load it
+                js_str = Pytastic().schema(schema_cls)
+                js = loads(js_str)
+            except Exception:
+                # Fallback or error handling
+                js = {"type": "object", "description": "Schema generation failed"}
             
-            # Extract definitions
+            # Extract definitions if Pytastic eventually supports it or if we use a different mechanism
+            # Currently Pytastic inlines definitions, so $defs might not be present or populated as msgspec does
             defs = js.pop("$defs", {})
             
             # If js is a reference to a local def, resolve it
@@ -1143,7 +1150,7 @@ class Router(object):
         
         async def openapi_handler(req, res, ctx):
             res.headers = "Content-Type", "application/json"
-            res.body = json.dumps(self.openapi())
+            res.body = dumps(self.openapi())
 
         json_path = f"{route.rstrip('/')}/openapi.json"
         self.GET(json_path, openapi_handler, subdomain=subdomain)
