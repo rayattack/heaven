@@ -2,7 +2,6 @@ dist/
 .venv/
 .coverage
 .codecov.yml
-.heaven
 .pytastic
 .vscode/
 .idea/

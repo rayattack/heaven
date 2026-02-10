@@ -1,3 +1,14 @@
+### 1.3.9
+- **Documentation**: **`.heaven` LLM Context File**. Complete rewrite of the `.heaven` reference file covering all 23 framework APIs. Designed to enable LLMs to write idiomatic Heaven code using string discovery, middleware, schemas, subdomains, and more.
+- **Documentation**: **`.pytastic` Update**. Updated pytastic reference to document `strip`, `partial`, and runtime validation options (`vx.validate(Schema, data, strip=True, partial=True)`).
+
+### 1.3.8
+- **Feature**: **Pytastic Integration**. Replaced internal schema validation with `pytastic` library. Single shared `Pytastic` instance per `Router` for validation caching and performance.
+- **Feature**: **Output Protection via `strip`**. `protect=True` (default) now uses `pytastic.validate(..., strip=True)` to silently remove extra fields from responses. Prevents accidental data leaks (e.g., `password_hash`) without raising errors. Propagates to nested `List[TypedDict]` items.
+- **Feature**: **Partial Responses**. `partial=True` uses `pytastic.validate(..., partial=True)` to allow responses to omit required schema fields. Useful for summary/list endpoints returning subsets of data.
+- **Improved**: **Schema Baking**. Simplified `output_hook` in `_bake_schemas` — delegates `strip` and `partial` directly to `pytastic.validate()`, removing convoluted fallback logic.
+- **Cleanup**: Removed `heaven/schema/` directory (replaced by `pytastic` re-export in `heaven/schema.py`). Removed stale comments from `router.py`.
+
 ### 1.3.6
 - **Feature**: **Response HTTP Proxy**. Added `res.http` as a proxy for `http.HTTPStatus`. Now you can do `res.status = res.http.CREATED` without importing `HTTPStatus`.
 
