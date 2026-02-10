@@ -2,5 +2,9 @@ dist/
 .venv/
 .coverage
 .codecov.yml
+.heaven
+.pytastic
+.vscode/
+.idea/
 site/
 __pycache__/
