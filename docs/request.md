@@ -53,6 +53,29 @@ user = req.data
 print(user.name)
 ```
 
+### Type-Safe `req.data` with Generics
+
+`Request` is a generic class (`Request[T]`), so you can annotate your handler to get full IDE autocomplete and type checking on `req.data`:
+
+```python
+from heaven import Request, Response, Context
+
+class User(Schema):
+    name: str
+    email: str
+
+async def create_user(req: Request[User], res: Response, ctx: Context):
+    user = req.data  # IDE knows this is User
+    print(user.name) # autocomplete works here
+```
+
+This pairs with your schema registration — the generic parameter should match the `expects` schema:
+
+```python
+app.schema.POST('/users', expects=User)
+app.POST('/users', create_user)
+```
+
 ### Forms (`req.form`)
 Access `application/x-www-form-urlencoded` or `multipart/form-data` uploads.
 

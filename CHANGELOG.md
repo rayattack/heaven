@@ -1,3 +1,28 @@
+### 1.3.14
+- **Feature**: **Method-Scoped Hooks**. `BEFORE()` and `AFTER()` now accept a `methods` parameter to restrict hooks to specific HTTP methods. Schema validation and output hooks are now automatically scoped to their registered method, preventing e.g. a POST validation hook from running on GET requests.
+- **Feature**: **Template Prefix & Merging**. `TEMPLATES()` now accepts a `prefix` parameter for namespaced template loading via Jinja2 `PrefixLoader`. Multiple `TEMPLATES()` calls merge loaders via `ChoiceLoader` instead of overwriting. Mounted sub-apps preserve their template prefixes.
+- **Feature**: **Mounted WebSocket Handlers**. `mount()` now correctly delegates WebSocket routes using the `(sender, receiver, req, ctx)` signature instead of the HTTP `(req, res, ctx)` signature.
+- **Feature**: **Docs Favicon**. `DOCS()` and `SubdomainContext.doc()` now accept a `favicon` parameter to set a custom favicon on the generated API reference page.
+- **Improved**: **WebSocket `receiver()` Robustness**. The internal `receiver()` closure now loops over ASGI messages, properly handling `websocket.disconnect` by returning `None` and only yielding data on `websocket.receive`.
+- **Improved**: **Subdomain CORS & Sessions**. `cors()` and `sessions()` now accept a `subdomains` parameter and automatically register `OPTIONS` wildcard handlers per subdomain. Sessions now delegate to `res.cookie()` with sensible defaults.
+- **Improved**: **`SubdomainContext` Consistency**. Renamed `assets` to `ASSETS` to match the uppercase convention. Added `cors()` proxy method.
+- **Fix**: **`listen()` Port Type**. `port` parameter is now typed as `int` (was `str`).
+- **Fix**: Removed invalid `websocket.http.response.start` send after WebSocket handler completion.
+
+### 1.3.13
+- **Feature**: **Livereload**. When `debug=True`, Heaven automatically injects a livereload script into HTML responses from `res.render()` and `res.renders()`. A WebSocket endpoint at `/__heaven/livereload` detects server restarts and triggers a browser reload. Zero config — on by default in debug, absent in production.
+- **Fix**: **WebSocket `receiver()` Skips Non-Message Types**. The internal `receiver()` closure now loops over ASGI messages, only returning on `websocket.receive` (data) or `websocket.disconnect` (`None`). Previously, unconsumed `websocket.connect` messages in the receive queue would be returned as `None`, causing handlers to exit immediately.
+- **Fix**: **WebSocket `__call__` Cleanup**. Removed invalid `websocket.http.response.start` send after a WebSocket handler completes. This ASGI message is only valid for rejecting a WebSocket upgrade before acceptance — sending it after a handled connection raised a `RuntimeError` in uvicorn.
+
+### ~~1.3.12~~ (redacted — livereload caused infinite page reloads due to WebSocket bugs above)
+
+### 1.3.11
+- **Feature**: **Subdomain CORS**. `app.cors()` now accepts a `subdomains` parameter (list of subdomain names) to apply CORS to specific subdomains. Defaults to `["www"]`. Also added `cors()` to `SubdomainContext` so `api.cors(origins=[...])` works directly on subdomain proxies.
+
+### 1.3.10
+- **Fix**: **`res.cookie()` Directives Ignored**. Fixed bug where `res.cookie()` built the full cookie string with all directives (domain, httponly, samesite, etc.) but discarded it, only setting the bare `name=value` header.
+- **Improved**: **Session Cookie Options**. `app.sessions()` now accepts `**cookie_opts` (e.g. `domain`, `secure`, `samesite`, `partitioned`) and delegates to `res.cookie()` instead of hardcoding the `Set-Cookie` string. Defaults: `path="/", httponly=True, samesite="Lax"`. Enables cross-subdomain sessions via `app.sessions("secret", domain=".example.com")`.
+
 ### 1.3.9
 - **Documentation**: **`.heaven` LLM Context File**. Complete rewrite of the `.heaven` reference file covering all 23 framework APIs. Designed to enable LLMs to write idiomatic Heaven code using string discovery, middleware, schemas, subdomains, and more.
 - **Documentation**: **`.pytastic` Update**. Updated pytastic reference to document `strip`, `partial`, and runtime validation options (`vx.validate(Schema, data, strip=True, partial=True)`).

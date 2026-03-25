@@ -16,7 +16,7 @@ from aiofiles import open as async_open_file
 import time
 import asyncio
 import logging
-from jinja2 import Environment, FileSystemLoader, select_autoescape
+from jinja2 import Environment, FileSystemLoader, PrefixLoader, ChoiceLoader, select_autoescape
 from uvicorn import run
 from orjson import dumps, loads
 
@@ -68,6 +68,14 @@ def _closure_mounted_application(handler: Handles, mounted: 'Router'):
         res._mounted_from_application = mounted
         if iscoroutinefunction(handler): await handler(req, res, ctx)
         else: handler(req, res, ctx)
+    return delegate
+
+
+def _closure_mounted_ws(handler: Handles, mounted: 'Router'):
+    async def delegate(sender, receiver, req: Request, ctx):
+        req.mounted = mounted
+        if iscoroutinefunction(handler): await handler(sender, receiver, req, ctx)
+        else: handler(sender, receiver, req, ctx)
     return delegate
 
 
@@ -287,6 +295,24 @@ class Routes(object):
         else:
             self.befores[route] = [handler]
 
+    def add_before(self, route, handler, methods=None):
+        if methods:
+            handler._hook_methods = frozenset(m.upper() for m in methods)
+        routes = self.befores.get(route)
+        if routes:
+            routes.append(handler)
+        else:
+            self.befores[route] = [handler]
+
+    def add_after(self, route, handler, methods=None):
+        if methods:
+            handler._hook_methods = frozenset(m.upper() for m in methods)
+        routes = self.afters.get(route)
+        if routes:
+            routes.append(handler)
+        else:
+            self.afters[route] = [handler]
+
     def get_handler(self, routes):
         for route in routes:...
         return None, None
@@ -354,8 +380,11 @@ class Routes(object):
                     await send(msg)
                 
                 async def receiver():
-                    msg = await receive()
-                    return msg.get('text') or msg.get('bytes')
+                    while True:
+                        msg = await receive()
+                        if msg['type'] == 'websocket.disconnect': return None
+                        if msg['type'] == 'websocket.receive':
+                            return msg.get('text') or msg.get('bytes')
 
                 if iscoroutinefunction(handler): await handler(sender, receiver, r, c)
                 else: handler(sender, receiver, r, c)
@@ -424,7 +453,12 @@ class Routes(object):
 
         for hook in hooks:
             if w._abort: raise AbortException
-            
+
+            # Skip if hook is method-scoped and request method doesn't match
+            hook_methods = getattr(hook, '_hook_methods', None)
+            if hook_methods and r.method not in hook_methods:
+                continue
+
             # Check for Earth bypasses
             application = r._application
             if application and hasattr(application, 'earth'):
@@ -498,9 +532,10 @@ class SubdomainContext:
     def SOCKET(self, route: str, handler: Handler): self.app.SOCKET(route, handler, subdomain=self.name)
     def WEBSOCKET(self, route: str, handler: Handler): self.app.WEBSOCKET(route, handler, subdomain=self.name)
     def WS(self, route: str, handler: Handler): self.app.WS(route, handler, subdomain=self.name)
-    def assets(self, folder: str, route=None, relative_to=None): self.app.ASSETS(folder, route, subdomain=self.name, relative_to=relative_to)
+    def ASSETS(self, folder: str, route=None, relative_to=None): self.app.ASSETS(folder, route, subdomain=self.name, relative_to=relative_to)
     def abettor(self, method: str, route: str, handler: Handler): self.app.abettor(method, route, handler, subdomain=self.name)
-    def doc(self, route: str, title="API Reference", version="0.0.1"): self.app.DOCS(route, title, version, subdomain=self.name)
+    def doc(self, route: str, title="API Reference", version="0.0.1", favicon=None): self.app.DOCS(route, title, version, subdomain=self.name, favicon=favicon)
+    def cors(self, handler=None, **kwargs): return self.app.cors(handler, subdomains=[self.name], **kwargs)
 
 
 class Router(object):
@@ -516,6 +551,7 @@ class Router(object):
         self._configuration = _get_configuration(configurator)
         self._templater = None
         self._loader = None
+        self._template_prefix = None
         self.__daemons = []
         self.schema = SchemaRegistry(self)
         self._docs_config = None
@@ -535,6 +571,7 @@ class Router(object):
             self.__daemons.append(_watchdog)
         
         self._pytastic = Pytastic()
+
 
     @property
     def _(self):
@@ -559,7 +596,7 @@ class Router(object):
                         res.status = 422
                         res.body = str(e).encode()
                         res.abort(res.body)
-                self.BEFORE(route, validate_hook, subdomain=subdomain)
+                self.BEFORE(route, validate_hook, subdomain=subdomain, methods=[method])
             
             returns = meta.get('returns')
             if returns:
@@ -590,7 +627,7 @@ class Router(object):
                             res.headers = "Content-Type", "application/json"
                             res.body = dumps(res.body)
                 
-                self.AFTER(route, output_hook, subdomain=subdomain)
+                self.AFTER(route, output_hook, subdomain=subdomain, methods=[method])
         self._baked = True
 
     async def __call__(self, scope, receive, send):
@@ -647,8 +684,6 @@ class Router(object):
                 await send({'type': 'http.response.body', 'body': b'', 'more_body': False})
             else:
                 await send({'type': 'http.response.body', 'body': response.body, **response.metadata})
-        else:
-            await send({'type': 'websocket.http.response.start', 'headers': response.headers, 'status': response.status})
 
         # add background tasks
         if response.deferred:
@@ -753,13 +788,20 @@ class Router(object):
         plugin_instance.install(self)
         return self
 
-    def cors(self, handler=None, **kwargs):
+    def cors(self, handler=None, subdomains=None, **kwargs):
         """
         Enables Cross-Origin Resource Sharing (CORS) for the application.
         Accepts a handler function or configuration via kwargs.
+        subdomains: list of subdomain names to apply CORS to (defaults to ["www"]).
         """
+        _subdomains = subdomains or [DEFAULT]
+        if isinstance(_subdomains, str): _subdomains = [_subdomains]
+
+        handler = _string_to_function_handler(handler) if handler else None
         if handler and callable(handler):
-            self.BEFORE("/*", handler)
+            for sd in _subdomains:
+                self.BEFORE("/*", handler, subdomain=sd)
+                self.OPTIONS("/*", lambda req, res, ctx: None, subdomain=sd)
             return self
 
         # Smart key mapping
@@ -815,15 +857,25 @@ class Router(object):
                 res.headers = "Access-Control-Allow-Methods", methods_val
                 res.headers = "Access-Control-Allow-Headers", headers_val
 
-        self.BEFORE("/*", handle_cors)
+        for sd in _subdomains:
+            self.BEFORE("/*", handle_cors, subdomain=sd)
+            self.OPTIONS("/*", lambda req, res, ctx: None, subdomain=sd)
         return self
 
-    def sessions(self, secret_key, cookie_name="session", max_age=3600):
+    def sessions(self, secret_key, cookie_name="session", max_age=3600, subdomains=None, **cookie_opts):
         """
         Enables secure, signed cookie-based sessions.
+        subdomains: list of subdomain names to apply sessions to (defaults to ["www"]).
         """
+        _subdomains = subdomains or [DEFAULT]
+        if isinstance(_subdomains, str): _subdomains = [_subdomains]
+
         from .security import SecureSerializer
         serializer = SecureSerializer(secret_key)
+
+        # Merge sensible defaults with caller overrides
+        opts = dict(path="/", httponly=True, samesite="Lax")
+        opts.update(cookie_opts)
 
         async def load_session(req, res, ctx):
             cookie = req.cookies.get(cookie_name)
@@ -831,7 +883,7 @@ class Router(object):
             if cookie:
                 try: data = serializer.loads(cookie, max_age=max_age)
                 except: pass
-            
+
             # attach to context and wrapping in Look so attributes can be accessed via dot notation
             # e.g. ctx.session.user_id
             ctx.keep('session', Look(data))
@@ -840,29 +892,27 @@ class Router(object):
 
         async def save_session(req, res, ctx):
             if not hasattr(ctx, 'session'): return
-            
+
             # Check if session was modified
             # We access _data directly because ctx.session is a Look wrapper around the dict
             current_data = ctx.session._data if hasattr(ctx.session, '_data') else ctx.session
-            try:
-                current = dumps(current_data)
+            try: current = dumps(current_data)
             except: return
 
-            if current == getattr(ctx, '_initial_session', b''):
-                return
+            if current == getattr(ctx, '_initial_session', b''): return
 
             # Sign and Serialize
             token = serializer.dumps(current_data)
-            
-            # Set cookie header
-            cookie_val = f"{cookie_name}={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age={max_age}"
-            res.headers = "Set-Cookie", cookie_val
 
-        self.BEFORE("/*", load_session)
-        self.AFTER("/*", save_session)
+            # Set cookie via res.cookie which handles all directives
+            res.cookie(cookie_name, token, max_age=max_age, **opts)
+
+        for sd in _subdomains:
+            self.BEFORE("/*", load_session, subdomain=sd)
+            self.AFTER("/*", save_session, subdomain=sd)
         return self
 
-    def listen(self, host='localhost', port='8701', debug=True, **kwargs): #pragma: nocover
+    def listen(self, host='localhost', port: int = 8701, debug=True, **kwargs): #pragma: nocover
         run(self, host=host, port=port, debug=debug, **kwargs)
 
     def subdomain(self, subdomain: str):
@@ -875,7 +925,40 @@ class Router(object):
             self._buckets = {**router._buckets, **self._buckets}
             self._configuration = {**router._configuration, **self._configuration}
             if self._loader and router._loader:
-                self._loader.searchpath = [*router._loader.searchpath, *self._loader.searchpath]
+                if router._template_prefix or self._template_prefix:
+                    # Build a combined loader that respects prefixes
+                    prefixed = {}
+                    unprefixed = []
+
+                    # Collect from the child (mounted) router
+                    if router._template_prefix:
+                        prefixed[router._template_prefix] = router._loader
+                    else:
+                        unprefixed.append(router._loader)
+
+                    # Collect from the parent router
+                    current_loader = self._templater.loader if self._templater else None
+                    if isinstance(current_loader, ChoiceLoader):
+                        for sub in current_loader.loaders:
+                            if isinstance(sub, PrefixLoader):
+                                prefixed.update(sub.mapping)
+                            else:
+                                unprefixed.append(sub)
+                    elif isinstance(current_loader, PrefixLoader):
+                        prefixed.update(current_loader.mapping)
+                    elif current_loader:
+                        unprefixed.append(current_loader)
+
+                    # Build the combined loader
+                    loaders = []
+                    if prefixed:
+                        loaders.append(PrefixLoader(prefixed))
+                    loaders.extend(unprefixed)
+
+                    combined = ChoiceLoader(loaders) if len(loaders) > 1 else loaders[0]
+                    self._templater.loader = combined
+                else:
+                    self._loader.searchpath = [*router._loader.searchpath, *self._loader.searchpath]
 
         self.deinitializers.extend(router.deinitializers)
         self.initializers.extend(router.initializers)
@@ -887,7 +970,10 @@ class Router(object):
                 for route in cache:
                     handler = cache[route]
                     self.subdomain(subdomain)
-                    closured_handler = _closure_mounted_application(handler, router)
+                    if method == SOCKET:
+                        closured_handler = _closure_mounted_ws(handler, router)
+                    else:
+                        closured_handler = _closure_mounted_application(handler, router)
                     self.abettor(method, route, closured_handler, subdomain=subdomain, router=router if isolated else self)
             for after in engine.afters:
                 self.subdomains[subdomain].afters[after] = [*engine.afters[after], *self.subdomains[subdomain].afters.get(after, [])]
@@ -904,21 +990,21 @@ class Router(object):
     def ws(self):
         return self.__ws
 
-    def AFTER(self, route: str, handler: Handler, subdomain=DEFAULT):
+    def AFTER(self, route: str, handler: Handler, subdomain=DEFAULT, methods=None):
         if not route.startswith('/'): raise UrlError(URL_ERROR_MESSAGE)
         engine = self.subdomains.get(subdomain)
         if not isinstance(engine, Routes): #pragma: nocover
             raise NameError('Subdomain does not exist - register subdomain on router first')
         handler = _string_to_function_handler(handler)
-        engine.after = route, handler
+        engine.add_after(route, handler, methods=methods)
 
-    def BEFORE(self, route: str, handler: Handler, subdomain=DEFAULT):
+    def BEFORE(self, route: str, handler: Handler, subdomain=DEFAULT, methods=None):
         if not route.startswith('/'): raise UrlError(URL_ERROR_MESSAGE)
         engine = self.subdomains.get(subdomain)
         if not isinstance(engine, Routes): #pragma: nocover
             raise NameError('Subdomain does not exist - register subdomain on router first')
         handler = _string_to_function_handler(handler)
-        engine.before = route, handler
+        engine.add_before(route, handler, methods=methods)
 
     def CONNECT(self, route: str, handler: Handler, subdomain=DEFAULT):
         self.abettor(METHOD_CONNECT, route, handler, subdomain)
@@ -987,17 +1073,35 @@ class Router(object):
             if first.lower() == STARTUP: self.initializers.append(closure(second))
             else: self.deinitializers.append(closure(second))
 
-    def TEMPLATES(self, folder: str, escape=None, asynchronous=True, relative_to=None):
+    def TEMPLATES(self, folder: str, escape=None, asynchronous=True, relative_to=None, prefix=None):
         # TODO: add warning if root folder slash is used
         if relative_to: relative_file_path_folder = path.realpath(path.dirname(relative_to))
         else: relative_file_path_folder = getcwd()
 
         file_system_loader = FileSystemLoader(path.join(relative_file_path_folder, folder))
         files_to_escape = escape or ['htm', 'html']
-        environment = Environment(loader=file_system_loader, autoescape=select_autoescape(files_to_escape))
-        environment.is_async = asynchronous
-        self._templater = environment
+
+        if prefix:
+            new_loader = PrefixLoader({prefix: file_system_loader})
+        else:
+            new_loader = file_system_loader
+
+        # Merge into existing environment if one exists
+        if self._templater:
+            current = self._templater.loader
+            if isinstance(current, ChoiceLoader):
+                current.loaders.append(new_loader)
+            elif current:
+                self._templater.loader = ChoiceLoader([current, new_loader])
+            else:
+                self._templater.loader = new_loader
+        else:
+            environment = Environment(loader=new_loader, autoescape=select_autoescape(files_to_escape))
+            environment.is_async = asynchronous
+            self._templater = environment
+
         self._loader = file_system_loader
+        self._template_prefix = prefix
 
     def ASSETS(self, folder: str, route=None, subdomain=DEFAULT, relative_to=None):
         # TODO: add warning if root folder slash is used
@@ -1120,15 +1224,17 @@ class Router(object):
             "components": components
         }
 
-    def DOCS(self, route: str, title="API Reference", version="0.0.1", subdomain=DEFAULT):
+    def DOCS(self, route: str, title="API Reference", version="0.0.1", subdomain=DEFAULT, favicon=None):
         self._docs_config = {"title": title, "version": version}
-        
+
         async def openapi_handler(req, res, ctx):
             res.headers = "Content-Type", "application/json"
             res.body = dumps(self.openapi())
 
         json_path = f"{route.rstrip('/')}/openapi.json"
         self.GET(json_path, openapi_handler, subdomain=subdomain)
+
+        favicon_tag = f'\n    <link rel="icon" href="{favicon}" />' if favicon else ""
 
         async def docs_handler(req, res, ctx):
             res.headers = "Content-Type", "text/html"
@@ -1137,7 +1243,7 @@ class Router(object):
   <head>
     <title>{title}</title>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />{favicon_tag}
   </head>
   <body>
     <script id="api-reference" data-url="{json_path}"></script>

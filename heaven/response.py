@@ -43,6 +43,7 @@ def _(payload):
 def is_async_gen(obj):
     return hasattr(obj, '__aiter__') or hasattr(obj, '__anext__')
 
+
 @_body.register(object)
 def _(payload):
     if is_async_gen(payload):
@@ -174,7 +175,7 @@ class Response():
                     raise ValueError(f'SameSite must be one of Strict, Lax, None, got {val}')
                 val = _val
             cookie_string += f'; {_key}={val}'
-        self.headers = 'Set-Cookie', f'{name}={value}'
+        self.headers = 'Set-Cookie', cookie_string
 
     async def render(self, name: str, **contexts) -> 'Response':
         """Serve html file walking up parent router/app tree until base parent if necessary"""
@@ -190,7 +191,8 @@ class Response():
             return self
 
         template = templater.get_template(name)
-        self.body = await template.render_async({'ctx': self._ctx, 'res': self, 'req': self._req, **contexts})
+        html = await template.render_async({'ctx': self._ctx, 'res': self, 'req': self._req, **contexts})
+        self.body = html
         return self
 
     def renders(self, name: str, **contexts) -> 'Response':
@@ -205,7 +207,8 @@ class Response():
             _get_guardian_angel(self, RuntimeError('Trying to use Async HTML Renderer to render Sync HTML'))
             return self
         template = templater.get_template(name)
-        self.body = template.render({'ctx': self._ctx, 'res': self, 'req': self._req, **contexts})
+        html = template.render({'ctx': self._ctx, 'res': self, 'req': self._req, **contexts})
+        self.body = html
         return self
 
     def redirect(self, location, permanent=False) -> 'Response':

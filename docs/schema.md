@@ -105,6 +105,23 @@ class RawMetal(Schema):
 
 Instead of cluttering your handlers with decorators, Heaven uses a "Sidecar" pattern. You register schemas on the router's `schema` property.
 
+### Why a Sidecar?
+
+Most frameworks tie schemas to handlers via decorators or function signatures. Heaven keeps them separate on purpose:
+
+1. **One registration, two jobs.** The `expects` and `returns` schemas drive both runtime validation *and* OpenAPI doc generation. The schema registry is the single source of truth for both — no decorator introspection or annotation parsing needed.
+2. **Handlers stay pure.** Your handler is just a function that receives `(req, res, ctx)`. No framework magic in the signature, no hidden dependency injection, no decorator stack to read through.
+3. **Schemas are relocatable.** Because registration is just a method call on the router, you can organize schemas in a separate file, register them conditionally, or build them dynamically — without touching your handlers.
+4. **Subdomain-aware by default.** The same sidecar pattern works identically on subdomains (`api.schema.POST(...)`) with no additional wiring.
+
+**The trade-off**
+
+At runtime, Heaven correctly populates `req.data` with the validated schema object — it knows exactly what it is. But because the handler is a standalone function, your IDE and type checker don't.
+
+To bridge this gap, annotate `Request[YourSchema]` in the handler signature to tell the IDE what the runtime already knows.
+
+The two registrations aren't linked at the type level — keeping them in sync is on you.
+
 ```python
 # 0. You can mount schemas on subdomains e.g.
 api = app.subdomain('api')
@@ -139,6 +156,20 @@ When you register an `expects` schema, Heaven automatically:
 1.  **Validates** the incoming JSON body against the schema.
 2.  **Aborts** with `422 Unprocessable Entity` if it's invalid (with a nice error message).
 3.  **Populates** `req.data` with the validated object.
+
+### Type-Safe Handlers
+
+`Request` is generic — annotate it with your schema to get full IDE autocomplete on `req.data`:
+
+```python
+from heaven import Request, Response, Context
+
+async def create_user(req: Request[User], res: Response, ctx: Context):
+    user = req.data  # IDE knows this is User
+    print(user.name) # autocomplete works
+```
+
+The generic parameter should match the `expects` schema you registered. This is a convention — Heaven doesn't enforce the match at runtime, but your type checker will.
 
 ## Auto-Generated Docs (OpenAPI)
 

@@ -82,6 +82,28 @@ async def handler(req: Request, res: Response, ctx: Context):
 
 Handlers can be sync or async. Heaven supports both.
 
+### Type-Safe Handlers with Generics
+
+`Request` is `Generic[T]`, so `req.data` can be typed via annotation. The generic parameter should match the `expects` schema:
+
+```python
+from heaven import Request, Response, Context
+
+class User(Schema):
+    name: str
+    email: str
+
+app.schema.POST("/users", expects=User)
+
+async def create_user(req: Request[User], res: Response, ctx: Context):
+    user = req.data  # IDE infers this as User, autocomplete works
+    print(user.name)
+
+app.POST("/users", create_user)
+```
+
+This is a convention — Heaven doesn't enforce the match at runtime, but type checkers (mypy, pyright) will.
+
 ## 3. Routing
 
 ### HTTP Methods
@@ -96,7 +118,8 @@ app.OPTIONS("/users", "handlers.users.options")
 app.CONNECT("/users", "handlers.users.connect")
 app.TRACE("/users", "handlers.users.trace")
 
-# Register handler for ALL HTTP methods on a route:
+# Register handler for ALL HTTP methods on a route
+# (CONNECT, DELETE, GET, OPTIONS, PATCH, POST, PUT, TRACE):
 app.HTTP("/health", "handlers.health.check")
 ```
 
@@ -114,6 +137,21 @@ async def get_post(req, res, ctx):
     user_id = req.params.get("id")      # string
     post_id = req.params.get("post_id")  # string
     res.body = f"User {user_id}, Post {post_id}"
+```
+
+#### Typed Route Parameters
+
+Parameters can be type-coerced using `:param:type` syntax. Supported types: `int`, `str`.
+
+```python
+app.GET("/users/:id:int/posts/:post_id:int", "handlers.posts.get_post")
+```
+
+```python
+# handlers/posts.py
+async def get_post(req, res, ctx):
+    user_id = req.params.get("id")      # int (auto-coerced)
+    post_id = req.params.get("post_id")  # int (auto-coerced)
 ```
 
 ### Wildcard Routes
@@ -195,17 +233,17 @@ app.POST("/users", "handlers.users.create_user")
 
 ```python
 # handlers/users.py
-async def create_user(req, res, ctx):
+async def create_user(req: Request[CreateUser], res: Response, ctx: Context):
     # req.data is already validated - if validation fails,
     # heaven automatically returns 422 before this handler runs
-    user = req.data
+    user = req.data       # IDE knows this is CreateUser
     print(user["name"])   # guaranteed to be a string with len >= 2
     print(user["email"])  # guaranteed to be a valid email
     res.body = {"id": 1, **user}
     res.status = 201
 ```
 
-If no schema is set, `req.data` falls back to `req.json`.
+If no schema is set, `req.data` falls back to `req.json`. Use `Request[T]` generics to get IDE autocomplete on `req.data` (see Handler Signature section above).
 
 ### Form Data
 
@@ -217,6 +255,12 @@ async def upload(req, res, ctx):
     if avatar:
         print(avatar.filename)                # original filename
         print(avatar.content)                 # bytes content
+
+    # Attribute access also works:
+    username = form.username
+
+    # Get all fields as a dict:
+    all_data = form.to_dict()
 ```
 
 ## 5. Response Object
@@ -266,6 +310,8 @@ res.cookie("session_id", "abc123",
 )
 ```
 
+Supported cookie options: `expires` (datetime), `secure` (bool), `httponly`/`http_only` (bool), `samesite`/`same_site` (str: "Strict"/"Lax"/"None"), `domain` (str), `path` (str), `partitioned` (bool), `max_age`/`maxage` (int).
+
 ### Redirect
 
 ```python
@@ -298,11 +344,14 @@ async def handler(req, res, ctx):
 
 ### Server-Sent Events (SSE)
 
+When `sse=True`, each yielded item is wrapped in `data: ...\n\n` format. Dicts and lists are JSON-serialized automatically:
+
 ```python
 async def handler(req, res, ctx):
     async def events():
         for i in range(5):
-            yield {"event": "update", "data": i}
+            yield f"event {i}"           # sent as: data: event 0\n\n
+        yield {"count": 5}               # sent as: data: {"count":5}\n\n
 
     res.stream(events(), sse=True)
 ```
@@ -316,14 +365,14 @@ async def download(req, res, ctx):
 
 ### Deferred Tasks
 
-Run tasks after the response is sent:
+Run tasks after the response is sent. Deferred functions receive the app as their argument:
 
 ```python
 async def handler(req, res, ctx):
     res.body = "Accepted"
     res.status = 202
 
-    async def send_email():
+    async def send_email(app):
         # runs after response is sent
         await email_service.send(...)
 
@@ -362,6 +411,9 @@ res.out(200, {"message": "OK"})
 # Equivalent to:
 # res.status = 200
 # res.body = {"message": "OK"}
+
+# With optional headers:
+res.out(200, {"message": "OK"}, ("X-Custom", "value"))
 ```
 
 ## 6. Context Object
@@ -397,7 +449,12 @@ async def handler(req, res, ctx):
 
 ### Reserved Keys
 
-These keys cannot be overwritten on ctx: `session`, `app`, `request`, `response`, `headers`, `cookies`.
+These keys cannot be set via dot-notation on ctx: `session`, `app`, `request`, `response`, `headers`, `cookies`.
+
+```python
+ctx.session = {"user": 1}            # raises AttributeError
+ctx.keep("session", {"user": 1})     # works fine (used internally by sessions)
+```
 
 ## 7. Application-Level Storage
 
@@ -408,9 +465,9 @@ app.keep("db_pool", pool)
 pool = app.peek("db_pool")
 app.unkeep("db_pool")
 
-# Also accessible via shorthand:
+# Also accessible via shorthand (dot-notation access via Look):
 app.keep("config", {"debug": True})
-print(app._.config.debug)  # True (dot-notation access via Lookup)
+print(app._.config.debug)  # True
 ```
 
 Typed keys work the same way:
@@ -498,14 +555,22 @@ app.ON(on_startup)
 
 ### Daemons
 
-Long-running background tasks:
+Long-running background tasks that repeat on an interval. The daemon function receives the app and returns the number of seconds to sleep before the next invocation. Return `None` or `False` to stop the daemon:
 
 ```python
-@app.daemons
 async def background_worker(app):
-    while True:
-        # do periodic work
-        await asyncio.sleep(60)
+    # do periodic work
+    await check_for_updates()
+    return 60  # run again in 60 seconds
+
+app.daemons = background_worker
+
+# Sync daemons also work (run in thread pool):
+def sync_worker(app):
+    cleanup_temp_files()
+    return 300  # run again in 5 minutes
+
+app.daemons = sync_worker
 ```
 
 ## 10. Schema Validation & API Docs
@@ -670,13 +735,83 @@ async def custom_cors(req, res, ctx):
 app.cors(custom_cors)
 ```
 
+### Subdomain CORS
+
+By default `app.cors()` only applies to the `www` (default) subdomain. Use `subdomains` to target specific subdomains, or call `cors()` directly on a subdomain proxy:
+
+```python
+api = app.subdomain("api")
+admin = app.subdomain("admin")
+
+# Apply to specific subdomains (must be registered first):
+app.cors(origins=["https://myapp.com"], subdomains=["www", "api", "admin"])
+
+# Or call cors() on the subdomain proxy directly:
+api.cors(origins=["https://myapp.com"])
+```
+
+**Note:** `cors()` automatically registers an `OPTIONS /*` catch-all route on each targeted subdomain. This ensures CORS preflight requests are handled correctly without needing to manually register OPTIONS routes.
+
+### Custom CORS with Subdomains
+
+A custom handler function can also be scoped to specific subdomains:
+
+```python
+async def my_cors(req, res, ctx):
+    origin = req.headers.get("origin", "")
+    res.headers = "Access-Control-Allow-Origin", origin
+    res.headers = "Access-Control-Allow-Credentials", "true"
+    res.headers = "Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS"
+    res.headers = "Access-Control-Allow-Headers", "Content-Type, Authorization"
+    if req.method == "OPTIONS":
+        res.status = 204
+        res.body = b""
+        res.abort(b"")
+
+app.cors(my_cors, subdomains=["api"])
+```
+
+When using a custom handler, you are responsible for handling OPTIONS preflight (including `res.abort()`) yourself. The auto-registered `OPTIONS /*` route ensures the request reaches your BEFORE hook.
+
 ## 12. Sessions
 
-Cookie-based signed sessions:
+Cookie-based signed sessions. The session cookie is written via `res.cookie()` internally, so all standard cookie options (domain, secure, samesite, etc.) are supported:
 
 ```python
 app.sessions("my-secret-key", cookie_name="session", max_age=3600)
 
+# With cookie options (forwarded to res.cookie()):
+app.sessions("my-secret-key",
+    cookie_name="session",
+    max_age=3600,
+    domain=".example.com",     # share session across subdomains
+    secure=True,               # HTTPS only
+    samesite="Strict",         # override default "Lax"
+)
+```
+
+Defaults (if not overridden): `path="/"`, `httponly=True`, `samesite="Lax"`.
+
+### Subdomain Sessions
+
+By default `sessions()` only applies to the `www` (default) subdomain. Use `subdomains` to enable session load/save hooks on specific subdomains:
+
+```python
+api = app.subdomain("api")
+my = app.subdomain("my")
+
+# Enable sessions on www, api, and my subdomains:
+app.sessions("my-secret-key",
+    cookie_name="session",
+    max_age=3600,
+    subdomains=["www", "api", "my"],
+    domain=".example.com",     # share the cookie across subdomains
+)
+```
+
+The session cookie (with `domain=".example.com"`) is sent by the browser to all subdomains, but the load/save hooks only run on the subdomains you specify. This avoids unnecessary session deserialization on subdomains that don't need it (e.g., a static assets subdomain).
+
+```python
 async def login(req, res, ctx):
     ctx.session["user_id"] = 123
     res.body = "Logged in"
@@ -690,7 +825,13 @@ async def dashboard(req, res, ctx):
     res.body = f"Welcome user {user_id}"
 ```
 
-Sessions use `SecureSerializer` which provides HMAC-SHA256 signing with timestamps.
+Sessions use `SecureSerializer` which provides HMAC-SHA256 signing with timestamps. Session data is wrapped in a `Look` object, so dot-notation access works:
+
+```python
+async def handler(req, res, ctx):
+    ctx.session.user_id   # dot-notation access
+    ctx.session["role"]   # dict-style access
+```
 
 ## 13. Subdomain Management
 
@@ -725,9 +866,10 @@ api.GET("/route", "handlers.api.route.get")
 api.POST("/route", "handlers.api.route.create")
 api.BEFORE("/route", "middleware.api_auth.check")
 api.AFTER("/route", "middleware.api_logging.log")
+api.ASSETS("static")               # Subdomain-scoped static files
+api.doc("/docs")                   # Subdomain-scoped docs
+api.doc("/docs", title="My API", version="1.0.0", favicon="/static/favicon.ico")
 api.schema.POST("/route", expects=Schema)
-api.doc("/docs")                    # Subdomain-scoped docs
-api.assets("static")               # Subdomain-scoped static files
 ```
 
 ## 14. Static Assets
@@ -749,6 +891,27 @@ app.WS("/chat", "handlers.chat.ws_handler")
 app.SOCKET("/chat", "handlers.chat.ws_handler")
 app.WEBSOCKET("/chat", "handlers.chat.ws_handler")
 ```
+
+### WebSocket Handler Signature
+
+WebSocket handlers have a different signature from HTTP handlers. They receive 4 arguments:
+
+```python
+async def ws_handler(sender, receiver, request, context):
+    # sender(data) - async function to send data to the client
+    # receiver()   - async function to receive data from the client
+    # request      - Request object (has params, queries, headers, etc.)
+    # context      - Context object (per-connection scoped)
+
+    while True:
+        msg = await receiver()        # receive message from client
+        if msg is None:
+            break
+        await sender(f"Echo: {msg}")  # send message to client
+```
+
+- `sender(data)` accepts `str` (sent as text) or `bytes` (sent as binary)
+- `receiver()` returns the message text or bytes, or `None` on disconnect
 
 ## 16. Mounting (Composing Apps)
 
@@ -784,15 +947,19 @@ app.plugin(MyPlugin())
 
 ## 18. Configuration
 
-Load configuration from a Python file:
+Load configuration from a dict or callable:
 
 ```python
-# config.py
-DB_URL = "postgres://localhost/mydb"
-SECRET = "my-secret"
+# From a dict:
+app = App(configurator={"DB_URL": "postgres://localhost/mydb", "SECRET": "my-secret"})
 
-# main.py
-app = App(configurator="config")
+# From a callable that returns a dict:
+def load_config():
+    return {"DB_URL": os.environ["DB_URL"], "SECRET": os.environ["SECRET"]}
+
+app = App(configurator=load_config)
+
+# Access config values:
 db_url = app.CONFIG("DB_URL")
 ```
 
@@ -908,7 +1075,7 @@ async with app.earth.test() as client:
 
 ### Mocking Lifecycle Hooks
 
-Swap startup/shutdown hooks during tests to avoid real connections:
+Register swaps BEFORE entering the test context manager, so they take effect during startup:
 
 ```python
 async def real_startup(app):
@@ -917,8 +1084,19 @@ async def real_startup(app):
 async def mock_startup(app):
     app.keep("db", FakeDB())
 
+app.earth.swap(real_startup, mock_startup)
 async with app.earth.test() as client:
-    client.swap(real_startup, mock_startup)
+    # mock_startup runs instead of real_startup
+    req, res, ctx = await client.GET("/data")
+```
+
+### Bypassing Middleware in Tests
+
+```python
+app.earth.bypass(auth_middleware)
+async with app.earth.test() as client:
+    # auth_middleware is skipped during this test
+    req, res, ctx = await client.GET("/protected")
 ```
 
 ### Atomic Test Factories
@@ -932,6 +1110,11 @@ ctx = app.earth.context()
 
 # Or all three at once:
 req, res, ctx = app.earth.trio("/users/1", method="GET")
+
+# Short aliases:
+req = app.earth.req("/users/1")
+res = app.earth.res()
+ctx = app.earth.ctx()
 ```
 
 ## 21. Lookup Utility
@@ -953,7 +1136,17 @@ app.keep("settings", {"theme": "dark"})
 print(app._.settings.theme)  # "dark"
 ```
 
-## 22. Error Classes
+## 22. Imports & Error Classes
+
+### Top-level imports from heaven:
+
+```python
+from heaven import App, Application, Router, Server
+from heaven import Request, Response, Context, Key
+from heaven import Pytastic, PytasticError, ValidationError
+```
+
+### Error classes:
 
 ```python
 from heaven.errors import AbortException, SubdomainError, UrlError, UrlDuplicateError
@@ -963,6 +1156,12 @@ from heaven.errors import AbortException, SubdomainError, UrlError, UrlDuplicate
 - `SubdomainError` - raised for subdomain configuration errors
 - `UrlError` - raised when a route doesn't start with `/`
 - `UrlDuplicateError` - raised when registering a duplicate route
+
+### Security exceptions:
+
+```python
+from heaven.security import SecurityError, BadSignature, SignatureExpired
+```
 
 ## 23. Full Application Example
 
