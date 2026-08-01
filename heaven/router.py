@@ -378,7 +378,7 @@ class Routes(object):
                     if isinstance(data, str): msg['text'] = data
                     else: msg['bytes'] = data
                     await send(msg)
-                
+
                 async def receiver():
                     while True:
                         msg = await receive()
@@ -396,10 +396,13 @@ class Routes(object):
             await self.xhooks(self.afters, matched, r, w, c)
         except AbortException:
             return w
+        except Exception as e:
+            # Preserve response w (which carries BEFORE hook headers like CORS)
+            # and attach the exception so __call__ can log/debug it.
+            w._unhandled_error = e
+            w.status = 500
+            w.body = b"Internal Server Error"
 
-        # too many hooks is not good for the pan ;-)
-        # i.e. hook lookup is constant but running many hooks will
-        # increase the time it takes before the response is released to the network
         return w
 
     def remove(self, method: str, route: str):
@@ -478,7 +481,7 @@ class SchemaRegistry:
         self._router = router
         self._schemas = {}
 
-    def add(self, method: str, route: str, expects=None, returns=None, summary=None, description=None, protect=None, partial=None, strict=None, group=None, subdomain=DEFAULT):
+    def add(self, method: str, route: str, expects=None, returns=None, summary=None, description=None, protect=None, partial=None, strict=None, group=None, dot=False, subdomain=DEFAULT):
         self._schemas[(method.upper(), route, subdomain)] = {
             'expects': _string_to_function_handler(expects) if expects else None,
             'returns': _string_to_function_handler(returns) if returns else None,
@@ -487,7 +490,8 @@ class SchemaRegistry:
             'protect': protect,
             'partial': partial,
             'strict': strict,
-            'group': group
+            'group': group,
+            'dot': dot
         }
 
     def POST(self, route: str, **kwargs): self.add('POST', route, **kwargs)
@@ -589,10 +593,16 @@ class Router(object):
         for (method, route, subdomain), meta in self.schema._schemas.items():
             expects = meta.get('expects')
             if expects:
-                async def validate_hook(req, res, ctx, schema=expects):
+                is_patch = method.upper() == 'PATCH'
+                dot = meta.get('dot', False)
+                async def validate_hook(req, res, ctx, schema=expects, patch=is_patch, dot=dot):
                     try:
-                        req._data = self._pytastic.validate(schema, req.json)
+                        if patch:
+                            req._data = self._pytastic.patch(schema, req.json, dot=dot)
+                        else:
+                            req._data = self._pytastic.validate(schema, req.json, dot=dot)
                     except ValidationError as e:
+                        print(f"[HEAVEN 422] schema={schema}, error={e}, body={req.json}")
                         res.status = 422
                         res.body = str(e).encode()
                         res.abort(res.body)
@@ -652,29 +662,30 @@ class Router(object):
             engine = wildcard_engine if wildcard_engine else self.subdomains.get(DEFAULT)
         if not self._baked: self._bake_schemas()
 
-        try:
-            response = await engine.handle(scope, receive, send, metadata, self)  # type: ignore
-            if isinstance(response.body, (dict, list)):
-                try:
-                    response.body = dumps(response.body)
-                    # Ensure Content-Type is set to application/json if missing
-                    if not any(h[0].lower() == b'content-type' for h in response.headers):
-                        response.header('Content-Type', 'application/json')
-                except Exception as e:
-                    print(f"JSON Serialization Error: {e}")
-                    response.status = 500
-                    response.body = b"Internal Server Error: JSON Serialization Failed"
-                    # Clear headers and set content-type plain
-                    response._headers = []
-                    response.header('Content-Type', 'text/plain')
-        except Exception as e:
-            if not self._debug: raise e
-            # Guardian Angel
-            from .response import _get_guardian_angel
-            r = Request(scope, b'', receive, metadata, self)
-            c = Context(self)
-            response = Response(self, c, r)
-            _get_guardian_angel(response, e)
+        response = await engine.handle(scope, receive, send, metadata, self)  # type: ignore
+
+        # If the handler raised an unhandled exception, log it and optionally
+        # show Guardian Angel — but keep the same response object so BEFORE
+        # hook headers (CORS, etc.) are preserved.
+        err = getattr(response, '_unhandled_error', None)
+        if err:
+            import traceback
+            print(f"[HEAVEN 500] {scope.get('method', '?')} {scope.get('path', '?')} — {err}")
+            traceback.print_exc()
+            if self._debug:
+                from .response import _get_guardian_angel
+                _get_guardian_angel(response, err)
+
+        if isinstance(response.body, (dict, list)):
+            try:
+                response.body = dumps(response.body)
+                # Ensure Content-Type is set to application/json if missing
+                if not any(h[0].lower() == b'content-type' for h in response.headers):
+                    response.header('Content-Type', 'application/json')
+            except Exception as e:
+                print(f"JSON Serialization Error: {e}")
+                response.status = 500
+                response.body = b"Internal Server Error: JSON Serialization Failed"
         
         if scope['type'] == 'http':
             await send({'type': 'http.response.start', 'headers': response.headers, 'status': response.status})
@@ -920,7 +931,27 @@ class Router(object):
             self.subdomains[subdomain] = Routes()
         return SubdomainContext(self, subdomain)
 
-    def mount(self, router: 'Router', isolated = True):
+    def mount(self, router: 'Router', isolated = True, prefer=None):
+        # Absorb child pytastic registrations (custom getters/setters, validators, etc.)
+        # onto the parent's instance. `prefer` resolves conflicts: None raises,
+        # 'parent'/'self' keeps the parent's registration, 'child'/'incoming' keeps
+        # the child's. Any other value is passed through to pytastic.Pytastic.use.
+        _prefer = prefer
+        if prefer in ('parent', 'self'): _prefer = self._pytastic
+        elif prefer in ('child', 'incoming'): _prefer = router._pytastic
+        if _prefer is None: self._pytastic.use(router._pytastic)
+        else: self._pytastic.use(router._pytastic, prefer=_prefer)
+
+        # Carry child schema registrations over so _bake_schemas (which only reads
+        # self.schema._schemas on the parent) actually wires up validation hooks.
+        for key, meta in router.schema._schemas.items():
+            self.schema._schemas[key] = meta
+
+        # Rebind so any further child.schema.*/child.vx.* registrations after mount
+        # land on the shared instances and take effect.
+        router._pytastic = self._pytastic
+        router.schema = self.schema
+
         if not isolated:
             self._buckets = {**router._buckets, **self._buckets}
             self._configuration = {**router._configuration, **self._configuration}
