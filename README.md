@@ -1,4 +1,4 @@
-# Heaven ⚡ : <img src="https://img.shields.io/badge/coverage-95%25-green" />
+# Heaven : <img src="https://img.shields.io/badge/coverage-95%25-green" />
 
 **Heaven** is the absolute minimal, insanely fast [ASGI](https://asgi.readthedocs.io) web framework for Python purists. It doesn't just get out of your way; it vanishes, leaving you with raw performance and total control.
 
