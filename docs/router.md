@@ -18,14 +18,14 @@ app.PATCH ('/users/:id', update_user)
 app.DELETE('/users/:id', delete_user)
 ```
 
-Also available: `OPTIONS`, `TRACE`, `CONNECT`, plus `HTTP(route, handler)` to register one handler across every method, and `SOCKET` / `WS` / `WEBSOCKET` for websockets.
+Also available: `HEAD`, `OPTIONS`, `TRACE`, `CONNECT`, plus `HTTP(route, handler)` to register one handler across every method, and `SOCKET` / `WS` / `WEBSOCKET` for websockets.
 
-!!! warning "No `HEAD`, no automatic `OPTIONS`, no `405`"
-    Three sharp edges worth knowing before you hit them:
+`HEAD` is answered by the matching `GET` route automatically, with the same status and headers but no body, so you only need `app.HEAD()` when a `HEAD` request should be handled differently from its `GET`.
 
-    - **`HEAD` is not synthesized** from a `GET` route, and there is no `app.HEAD()`. Even `app.HTTP()` skips it. The only way to serve `HEAD` today is the low-level escape hatch `app.abettor('HEAD', '/ping', handler)`.
-    - **`OPTIONS` is not auto-answered** unless you call `app.cors()`, which registers a catch-all for you.
-    - **A method mismatch returns `404`, not `405`**, and no `Allow` header is sent.
+A method mismatch returns **405** with an `Allow` header listing the methods that route does accept. A path that matches nothing returns 404.
+
+!!! warning "`OPTIONS` is not auto-answered"
+    Unless you call `app.cors()`, which registers a catch-all for you, `OPTIONS` requests are only served if you register a handler yourself.
 
 ## Path parameters
 
@@ -39,16 +39,36 @@ async def handler(req, res, ctx):
     order_id = req.params.get('order_id')  # 'abc' (a string)
 ```
 
-Append `:int` to have Heaven cast it for you:
+Append a type to have Heaven convert it for you:
 
 ```python
 app.GET('/users/:id:int', handler)   # req.params.get('id') -> 42, an int
 ```
 
-!!! danger "Path params only cast `:int`"
-    `:int` and `:str` are the only casts applied to **path** parameters. Writing `/users/:id:uuid` or `/report/:day:date` is accepted silently but you still get a **string** back. Cast it yourself in the handler.
+The same seven type names work in path segments and in query strings:
 
-    Query strings are the exception — they support the full set. See below.
+| Type | Example segment | You get |
+| :--- | :--- | :--- |
+| `int` | `/users/:id:int` | `42` |
+| `float` | `/price/:amount:float` | `19.99` |
+| `bool` | `/flag/:on:bool` | `True`, from `true`/`false`/`1`/`0` |
+| `str` | `/tag/:name:str` | `'sale'`, the no-op |
+| `date` | `/report/:day:date` | `date(2026, 8, 1)` |
+| `datetime` | `/log/:at:datetime` | `datetime(2026, 8, 1, 10, 30)` |
+| `uuid` | `/item/:sku:uuid` | `UUID('3f2504e0-...')` |
+
+`date` and `datetime` parse ISO 8601, the same format `date.fromisoformat` accepts.
+
+!!! tip "A value that will not convert is a miss, not a string"
+    `/users/:id:int` does not match `/users/abc`, so the request falls through to whatever else matches, or 404. Your handler never receives an unconverted string where it asked for a type. If a wildcard covers the same prefix, that wildcard picks it up:
+
+    ```python
+    app.GET('/users/:id:int', by_id)
+    app.GET('/users/*', by_slug)      # /users/abc lands here
+    ```
+
+!!! warning "Unknown type names are rejected at registration"
+    `/users/:id:uuidd` raises `UrlError` when the route is registered rather than quietly handing back a string, so a typo surfaces at startup instead of in production.
 
 ### Wildcards
 
@@ -159,11 +179,13 @@ async def list_users(req, res, ctx):
     If a startup callback raises, Heaven prints a notice and **starts anyway**. A failed database connection produces a running server that 500s on every request rather than a server that refuses to boot. If boot-time correctness matters, assert it yourself:
 
     ```python
+    import sys
+
+    #... more code ...
+
     async def connect_db(app):
-        try:
-            app.keep('db', await Database.connect())
-        except Exception:
-            import sys; sys.exit(1)     # fail loudly
+        try: app.keep('db', await Database.connect())
+        except Exception: sys.exit(1)     # fail loudly
     ```
 
 ## Application state: `keep`, `peek`, `unkeep`

@@ -30,6 +30,7 @@ from .constants import (
     METHOD_CONNECT,
     METHOD_DELETE,
     METHOD_GET,
+    METHOD_HEAD,
     METHOD_OPTIONS,
     METHOD_PATCH,
     METHOD_POST,
@@ -48,11 +49,11 @@ from .constants import (
     URL_ERROR_MESSAGE,
     WILDCARD
 )
-from .utils import preprocessor
+from .utils import CONVERTERS, parameter_parts, preprocessor
 from .request import Request
 from .response import Response
 from .context import Context, Look, Key
-from .errors import AbortException, SubdomainError, UrlDuplicateError, UrlError
+from .errors import AbortException, ParameterError, SubdomainError, UrlDuplicateError, UrlError
 
 methods = ['get', 'post', 'put', 'delete', 'connect', 'head', 'options', 'patch']
 
@@ -102,6 +103,44 @@ def _set_content_type(req: Request, res: Response):
         res.headers = 'Content-Type', mime_type
 
 
+class _Probe(object):
+    """Stand-in for a Request when walking the tree purely to ask whether a path
+    would match. Route.match writes params/qh as it goes; here they are discarded."""
+    params = None
+    qh = None
+
+
+OPENAPI_TYPES = {
+    'bool': {'type': 'boolean'},
+    'date': {'type': 'string', 'format': 'date'},
+    'datetime': {'type': 'string', 'format': 'date-time'},
+    'float': {'type': 'number'},
+    'int': {'type': 'integer'},
+    'str': {'type': 'string'},
+    'uuid': {'type': 'string', 'format': 'uuid'},
+}
+
+
+def _openapi_path(route: str) -> Tuple[str, list]:
+    """Translate heaven's `/users/:id` route syntax into OpenAPI's `/users/{id}`,
+    returning the rewritten path alongside its path-parameter definitions."""
+    parameters = []
+    segments = []
+    for segment in route.split('?', 1)[0].split(SEPARATOR):
+        if not segment.startswith(':'):
+            segments.append(segment)
+            continue
+        name, kind = parameter_parts(segment[1:])
+        segments.append(f'{{{name}}}')
+        parameters.append({
+            'name': name,
+            'in': 'path',
+            'required': True,
+            'schema': dict(OPENAPI_TYPES.get(kind, {'type': 'string'})),
+        })
+    return SEPARATOR.join(segments), parameters
+
+
 def _string_to_function_handler(handler: Handler):
     if isinstance(handler, str) and '.' in handler:
         module_name, function_name = handler.rsplit('.', 1)
@@ -117,18 +156,15 @@ class Parameter(object):
         self._potentials = potentials
 
     def resolve(self, parameter_address: str) -> Tuple[str, Any]:
-        value = self._value
         param = self._potentials.get(parameter_address)
+        if not param: raise ParameterError(f'no parameter registered for {parameter_address}')
 
-        stats = param.split(':')
-        if len(stats) == 2: key, kind = stats
-        else: key, kind = param, ''
-        cast = {'int': int, 'str': str}.get(kind.lower())
+        key, kind = parameter_parts(param)
+        if not kind: return key, self._value
 
-        # no need for if use None to cast fails and cast only exists deliberately
-        try: value = cast(value)
-        except: pass
-        return key, value
+        # the type name was checked when the route was registered, so it is present
+        try: return key, CONVERTERS[kind](self._value)
+        except Exception: raise ParameterError(f'{self._value!r} is not a valid {kind}')
 
 
 
@@ -196,9 +232,24 @@ class Route(object):
             r.params = '*', route_at_deviation
             return deviation_point.route, deviation_point.handler
 
+        # the url ran out on an interior node i.e. it is a strict prefix of a
+        # registered route. Such a node carries no route/handler/queryhint, so
+        # treat it as a miss rather than reading None off it below.
+        if not node.route: return matched, self.not_found
 
-        # time to process what parameters we saw
-        for parameter in parameters: r.params = parameter.resolve(node.route)
+        # time to process what parameters we saw. A typed segment that cannot read
+        # its value means this route does not describe the url after all, so treat
+        # it as a miss rather than handing the handler an unconverted string.
+        try:
+            for parameter in parameters: r.params = parameter.resolve(node.route)
+        except ParameterError:
+            # back out to a wildcard we passed on the way here, the same way a
+            # structural miss does, and drop any params resolved before the failure
+            if deviation_point:
+                r._params = None
+                r.params = '*', route_at_deviation
+                return deviation_point.route, deviation_point.handler
+            return matched, self.not_found
         r.qh = node.queryhint
         return node.route, node.handler
 
@@ -211,6 +262,12 @@ class Routes(object):
     def __init__(self):
         self.afters = {}
         self.befores = {}
+
+        # Method scoping lives here, keyed by (route pattern, handler), so that
+        # registering one function twice with different scopes keeps them apart
+        # instead of stamping the scope onto the shared function object.
+        self.aftermethods = {}
+        self.beforemethods = {}
 
         self.cache = {CONNECT: {}, DELETE: {}, GET: {}, HEAD: {}, OPTIONS: {}, PATCH: {}, POST: {}, PUT: {}, TRACE: {}, SOCKET: {}}
         self.routes = {}
@@ -255,6 +312,16 @@ class Routes(object):
             # this gives us ':' and the remainder i.e. xxx if heaven is of the form :xxx
             # otherwise it will return heaven if heaven is any other str
             label, remainder = _isparamx(part)
+            if remainder:
+                name, kind = parameter_parts(remainder)
+                if not name:
+                    raise UrlError(f'Route parameter ":{remainder}" in {route} has no name')
+                if kind and kind not in CONVERTERS:
+                    raise UrlError(
+                        f'Unknown type "{kind}" for route parameter ":{remainder}" in {route}. '
+                        f'Valid types are: {", ".join(sorted(CONVERTERS))}'
+                    )
+
             new_route_node = route_node.children.get(label)
             if not new_route_node:
                 new_route_node = Route(None, None, router)
@@ -295,9 +362,20 @@ class Routes(object):
         else:
             self.befores[route] = [handler]
 
+    def _scope(self, store, route, handler, methods):
+        """Record which HTTP methods this (route, handler) registration answers to.
+        An unscoped registration means every method, and wins over a narrower one
+        registered for the same pair."""
+        key = (route, handler)
+        if not methods:
+            store[key] = None
+            return
+        scope = frozenset(m.upper() for m in methods)
+        existing = store.get(key, scope)
+        store[key] = None if existing is None else (existing | scope)
+
     def add_before(self, route, handler, methods=None):
-        if methods:
-            handler._hook_methods = frozenset(m.upper() for m in methods)
+        self._scope(self.beforemethods, route, handler, methods)
         routes = self.befores.get(route)
         if routes:
             routes.append(handler)
@@ -305,8 +383,7 @@ class Routes(object):
             self.befores[route] = [handler]
 
     def add_after(self, route, handler, methods=None):
-        if methods:
-            handler._hook_methods = frozenset(m.upper() for m in methods)
+        self._scope(self.aftermethods, route, handler, methods)
         routes = self.afters.get(route)
         if routes:
             routes.append(handler)
@@ -316,6 +393,48 @@ class Routes(object):
     def get_handler(self, routes):
         for route in routes:...
         return None, None
+
+    def resolve(self, method: str, route: str, r):
+        """Walk the tree registered for `method` and return the matched route, its
+        handler, and the tree root. All three are None when nothing matches."""
+        if not self.cache.get(method): return None, None, None
+
+        route_node: Route = self.routes.get(method)
+        if not route_node: return None, None, None
+
+        if route == SEPARATOR:
+            return route_node.route, route_node.handler, route_node
+
+        matched, handler = route_node.match(deque(route.strip(SEPARATOR).split('/')), r)
+        return matched, handler, route_node
+
+    def allowed(self, route: str):
+        """The HTTP methods that have a handler registered for this path."""
+        allowed = set()
+        for method, route_node in self.routes.items():
+            if method == SOCKET or not route_node: continue
+            if route == SEPARATOR:
+                if route_node.handler: allowed.add(method)
+                continue
+            matched, _ = route_node.match(deque(route.strip(SEPARATOR).split('/')), _Probe())
+            if matched: allowed.add(method)
+        # anything answering GET answers HEAD too
+        if GET in allowed: allowed.add(HEAD)
+        return allowed
+
+    def unmatched(self, scope, method: str, route: str, w: Response):
+        """Nothing is registered for this method+path. If the path exists under a
+        different method that is a 405 with an Allow header, otherwise a 404."""
+        if scope['type'] != 'http': return w
+
+        allowed = self.allowed(route)
+        allowed.discard(method)
+        if not allowed: return w
+
+        w.status = 405
+        w.headers = 'Allow', ', '.join(sorted(allowed))
+        w.body = b'Method not allowed'
+        return w
 
     async def handle(self, scope, receive, send, metadata=None, application=None):
         """
@@ -336,27 +455,15 @@ class Routes(object):
         c = Context(application)
         w = Response(context=c, app=application, request=r)
 
-        matched = None
-        handler = None
-
-        # if the cache has nothing under its GET, POST etc it means nothing's been registered and we can leave early
-        roots = self.cache.get(method, {})
-        if not roots: return w
-
-        # if no route node then no methods have been registered
-        route_node = self.routes.get(method)
-        matched_node = route_node
-        if not route_node: return w
-
         route = scope.get('path')
-        if route == SEPARATOR: #pragma: nocover
-            matched = route_node.route # same as = SEPARATOR
-            handler = route_node.handler
-        else:
-            routes = route.strip(SEPARATOR).split('/')
-            matched, handler = route_node.match(deque(routes), r)
+        matched, handler, route_node = self.resolve(method, route, r)
 
-        if not matched: return w
+        # HEAD is a GET without a body, so let a plain GET route answer it rather
+        # than requiring the same handler to be registered twice.
+        if not matched and method == HEAD:
+            matched, handler, route_node = self.resolve(GET, route, r)
+
+        if not matched: return self.unmatched(scope, method, route, w)
 
         r._application = route_node.heaven_instance
         r._route = matched
@@ -364,7 +471,7 @@ class Routes(object):
         # call all pre handle request hooks but first reset response_writer from not found to found
         w.status = 200; w.body = b''
         try:
-            await self.xhooks(self.befores, matched, r, w, c)
+            await self.xhooks(self.befores, self.beforemethods, matched, r, w, c, before=True)
 
             # call request handler
             if w._abort: raise AbortException
@@ -393,7 +500,7 @@ class Routes(object):
                 else: handler(r, w, c)
 
             # call all post handle request hooks
-            await self.xhooks(self.afters, matched, r, w, c)
+            await self.xhooks(self.afters, self.aftermethods, matched, r, w, c)
         except AbortException:
             return w
         except Exception as e:
@@ -423,42 +530,39 @@ class Routes(object):
                 route_node.handler = None
                 self.cache[method][route] = None
 
-    async def xhooks(self, hookstore, matched, r: Request, w: Response, c: Context):
-        # We use a list to preserve order and a set for O(1) uniqueness checks
-        hooks = []
-        seen = set()
+    async def xhooks(self, hookstore, methodstore, matched, r: Request, w: Response, c: Context, before=False):
+        """Run the hooks registered for `matched`, outermost pattern first on the way
+        in and innermost first on the way out, so BEFORE/AFTER pairs nest properly:
 
-        def add_unique(new_hooks):
-             for hook in new_hooks:
-                 if hook not in seen:
-                     seen.add(hook)
-                     hooks.append(hook)
-
-        # 1. Exact match hooks
-        add_unique(hookstore.get(matched, []))
-
-        """Here we are getting any and or all hooks that match the url verbatim as provided
-        i.e. /url/:id or /url/:id/nested
+            BEFORE:  /*  ->  /users/*  ->  /users/:id  ->  handler
+            AFTER:                         /users/:id  ->  /users/*  ->  /*
         """
-
         parts = matched.strip(SEPARATOR).split(SEPARATOR)
+        wildcards = []
         for position, part in enumerate(parts):
             joinedparts = "/".join(parts[:position])
             _ = '' if position == 0 else SEPARATOR
-            # 2. Wildcard hooks from parents
-            add_unique(hookstore.get(f'/{joinedparts}{_}*', []))
-        
-        """Next we clean the matched url of any '/' surpluses before splitting it into a list
-        for enumeration.
-        Enumeration helps us gradually use the current enumeration position/offset/index to
-        gradually append '*' until we get a match.
-        """
+            # broadest first i.e. /*, then /users/*, then /users/:id/*
+            wildcards.append(f'/{joinedparts}{_}*')
 
-        for hook in hooks:
+        if before: patterns = [*wildcards, matched]
+        else: patterns = [matched, *reversed(wildcards)]
+
+        # A hook registered under several matching patterns still runs only once,
+        # at the earliest position it appears in.
+        hooks = []
+        seen = set()
+        for pattern in patterns:
+            for hook in hookstore.get(pattern, []):
+                if hook in seen: continue
+                seen.add(hook)
+                hooks.append((pattern, hook))
+
+        for pattern, hook in hooks:
             if w._abort: raise AbortException
 
-            # Skip if hook is method-scoped and request method doesn't match
-            hook_methods = getattr(hook, '_hook_methods', None)
+            # Skip if this registration is method-scoped and the request doesn't match
+            hook_methods = methodstore.get((pattern, hook))
             if hook_methods and r.method not in hook_methods:
                 continue
 
@@ -527,6 +631,7 @@ class SubdomainContext:
     def CONNECT(self, route: str, handler: Handler): self.app.CONNECT(route, handler, subdomain=self.name)
     def DELETE(self, route: str, handler: Handler): self.app.DELETE(route, handler, subdomain=self.name)
     def GET(self, route: str, handler: Handler): self.app.GET(route, handler, subdomain=self.name)
+    def HEAD(self, route: str, handler: Handler): self.app.HEAD(route, handler, subdomain=self.name)
     def HTTP(self, route: str, handler: Handler): self.app.HTTP(route, handler, subdomain=self.name)
     def OPTIONS(self, route: str, handler: Handler): self.app.OPTIONS(route, handler, subdomain=self.name)
     def PATCH(self, route: str, handler: Handler): self.app.PATCH(route, handler, subdomain=self.name)
@@ -543,7 +648,7 @@ class SubdomainContext:
 
 
 class Router(object):
-    def __init__(self, configurator=None, protect_output=True, allow_partials=False, fail_on_output=True, debug=True, monitor: Union[float, None] = None):
+    def __init__(self, configurator=None, protect_output=True, allow_partials=False, fail_on_output=True, debug=False, monitor: Union[float, None] = None):
         self._debug = debug
         self.__ws = None
         self.finalized = False
@@ -687,6 +792,9 @@ class Router(object):
                 response.status = 500
                 response.body = b"Internal Server Error: JSON Serialization Failed"
         
+        # a HEAD response carries the headers a GET would, but never a body
+        if scope.get('method') == HEAD: response.body = b''
+
         if scope['type'] == 'http':
             await send({'type': 'http.response.start', 'headers': response.headers, 'status': response.status})
             if hasattr(response.body, '__aiter__'):
@@ -743,15 +851,21 @@ class Router(object):
 
     @daemons.setter
     def daemons(self, afunction):
+        # Bind the daemon to the router it was registered on, the way ONCE already
+        # does for lifecycle callbacks. A mounted child's daemon then still receives
+        # the child, whose buckets and config an isolated mount does not share with
+        # the parent that ends up running it.
+        owner = self
+
         @wraps(afunction)
-        async def _daemon(app):
+        async def _daemon(app=None):
             loop = get_running_loop()
-            if (iscoroutinefunction(afunction)): 
-                sleeps = await afunction(app)
-            else: 
+            if (iscoroutinefunction(afunction)):
+                sleeps = await afunction(owner)
+            else:
                 # Run sync functions in a thread pool to avoid blocking the event loop
-                sleeps = await loop.run_in_executor(None, afunction, app)
-            
+                sleeps = await loop.run_in_executor(None, afunction, owner)
+
             if sleeps is None or sleeps == False: return
             await asleep(sleeps)
             loop.create_task(_daemon(app))
@@ -923,8 +1037,11 @@ class Router(object):
             self.AFTER("/*", save_session, subdomain=sd)
         return self
 
-    def listen(self, host='localhost', port: int = 8701, debug=True, **kwargs): #pragma: nocover
-        run(self, host=host, port=port, debug=debug, **kwargs)
+    def listen(self, host='localhost', port: int = 8701, debug=None, **kwargs): #pragma: nocover
+        # `debug` sets the app's own error-page mode; uvicorn dropped its debug
+        # argument years ago so it is deliberately not forwarded.
+        if debug is not None: self._debug = debug
+        run(self, host=host, port=port, **kwargs)
 
     def subdomain(self, subdomain: str):
         if not self.subdomains.get(subdomain):
@@ -994,6 +1111,10 @@ class Router(object):
         self.deinitializers.extend(router.deinitializers)
         self.initializers.extend(router.initializers)
 
+        # Daemons are bound to the child at registration, so the parent can start
+        # them on its own lifespan without changing which app they see.
+        self.__daemons.extend(router.__daemons)
+
         for subdomain in router.subdomains:
             engine: Routes = router.subdomains[subdomain]
             for method in engine.cache:
@@ -1011,6 +1132,12 @@ class Router(object):
             for before in engine.befores:
                 # Parent hooks (self) come BEFORE Child hooks (engine) for .BEFORE
                 self.subdomains[subdomain].befores[before] = [*self.subdomains[subdomain].befores.get(before, []), *engine.befores[before]]
+
+            # carry the child's method scoping across; the parent's own registrations
+            # win where both describe the same (route, handler) pair
+            parent = self.subdomains[subdomain]
+            parent.aftermethods = {**engine.aftermethods, **parent.aftermethods}
+            parent.beforemethods = {**engine.beforemethods, **parent.beforemethods}
 
     def websocket(self):
         # only if app is already running
@@ -1049,8 +1176,11 @@ class Router(object):
     def GET(self, route: str, handler: Handler, subdomain=DEFAULT):
         self.abettor(METHOD_GET, route, handler, subdomain)
 
+    def HEAD(self, route: str, handler: Handler, subdomain=DEFAULT):
+        self.abettor(METHOD_HEAD, route, handler, subdomain)
+
     def HTTP(self, route: str, handler: Handler, subdomain=DEFAULT):
-        for method in [CONNECT, DELETE, GET, OPTIONS, PATCH, POST, PUT, TRACE]:
+        for method in [CONNECT, DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT, TRACE]:
             self.abettor(method, route, handler, subdomain)
 
     def OPTIONS(self, route: str, handler: Handler, subdomain=DEFAULT):
@@ -1143,8 +1273,9 @@ class Router(object):
         async def serve_assets(req: Request, res: Response, ctx: Context):
             static_asset = f"{req.params.get('*', '')}"
             location = path.join(assets_folder_path, f'{folder}')
-            target_resource_path = path.join(location, static_asset)
-            res.file(target_resource_path)
+            # `within` keeps the read inside the asset folder, so `..` segments and
+            # symlinks leaving the tree resolve to a 404 rather than a file
+            res.file(static_asset, within=location)
         self.GET(route, serve_assets, subdomain)
 
     def SOCKET(self, route: str, handler: Handler, subdomain=DEFAULT):
@@ -1200,8 +1331,9 @@ class Router(object):
             return name
 
         for (method, route, subdomain), meta in self.schema._schemas.items():
-            path_item = paths.setdefault(route, {})
-            
+            documented, parameters = _openapi_path(route)
+            path_item = paths.setdefault(documented, {})
+
             # 1. Determine Group (Tag)
             # Priority: Explicit 'group' > First meaningful URL segment > "Default"
             group = meta.get("group")
@@ -1218,7 +1350,8 @@ class Router(object):
                 "description": meta.get("description") or "",
                 "responses": {"200": {"description": "Successful Response"}}
             }
-            
+            if parameters: op["parameters"] = parameters
+
             expects = meta.get("expects")
             if expects:
                 # Register schema and get name

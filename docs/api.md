@@ -7,7 +7,7 @@ The core application class that manages routing, configuration, and lifecycle.
 
 ```python
 class Router(configurator=None, protect_output=True, allow_partials=False,
-             fail_on_output=True, debug=True, monitor=None)
+             fail_on_output=True, debug=False, monitor=None)
 ```
 
 **Parameters:**
@@ -15,11 +15,11 @@ class Router(configurator=None, protect_output=True, allow_partials=False,
 - `protect_output` (bool): Strip undeclared fields from responses validated by a `returns` schema. Default `True`.
 - `allow_partials` (bool): Allow partial response payloads. Default `False`.
 - `fail_on_output` (bool): Return 500 when a response fails its `returns` schema, instead of sending it anyway. Default `True`.
-- `debug` (bool): Serve the Guardian Angel error page on unhandled exceptions. Default `True`.
+- `debug` (bool): Serve the Guardian Angel error page on unhandled exceptions. Default `False`.
 - `monitor` (float, optional): Warn when the event loop is blocked for longer than this many seconds. Off by default.
 
-!!! danger "`debug=True` is the default"
-    The debug error page includes the exception message and full traceback. Pass `debug=False` in production — see [Security](security.md#turn-off-debug-in-production).
+!!! tip "`debug` is off by default"
+    With `debug=False` an unhandled exception returns a plain `500 Internal Server Error` and the traceback goes to your logs only. Pass `debug=True` in development to get the Guardian Angel page, which renders the exception message and full traceback in the browser. See [Security](security.md#the-debug-error-page).
 
 **Properties:**
 - `daemons`: (write-only) Register a background task.
@@ -32,7 +32,7 @@ class Router(configurator=None, protect_output=True, allow_partials=False,
 - `call(handler, *args, **kwargs)`: Execute a handler string (dot-notation) with the app as context.
 - `cors(handler=None, subdomains=None, **kwargs)`: Enable CORS. Recognised keys — `origin`/`origins`, `methods`, `headers`, `expose`, `credentials`, `max_age` (casing and separators are normalised). Defaults to fully permissive.
 - `keep(key, value)`: Store value in application scope.
-- `listen(host='localhost', port='8701', debug=True, **kwargs)`: Start the server using Uvicorn. **Broken on uvicorn ≥ 0.15** — it forwards a removed `debug` argument and raises `TypeError`. Use the `heaven run` CLI instead.
+- `listen(host='localhost', port=8701, debug=None, **kwargs)`: Start the server using Uvicorn. `debug` sets the app's own error-page mode when given; remaining keyword arguments are forwarded to `uvicorn.run`.
 - `mount(router, isolated=True)`: Mount another `Router` instance. `isolated` determines if configs/buckets are merged.
 - `peek(key)`: Retrieve value from application scope.
 - `plugin(plugin_instance)`: Register a plugin (must have `install(app)` method).
@@ -45,14 +45,12 @@ class Router(configurator=None, protect_output=True, allow_partials=False,
 
 All take `(route, handler, subdomain='www')`.
 
-- `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`, `CONNECT`, `TRACE`
+- `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, `OPTIONS`, `CONNECT`, `TRACE`
 - `SOCKET(url, handler)` — WebSocket handler. Aliases: `WS`, `WEBSOCKET`.
-- `HTTP(url, handler)` — registers the handler for `CONNECT`, `DELETE`, `GET`, `OPTIONS`, `PATCH`, `POST`, `PUT` and `TRACE`.
+- `HTTP(url, handler)` — registers the handler for `CONNECT`, `DELETE`, `GET`, `HEAD`, `OPTIONS`, `PATCH`, `POST`, `PUT` and `TRACE`.
 
-!!! warning "There is no `HEAD()` method"
-    `HEAD` is not registrable through any shortcut and `HTTP()` skips it, so a `HEAD` request to a `GET` route returns 404. The only way to serve one is the low-level `app.abettor('HEAD', route, handler)`.
-
-    Relatedly: a method mismatch returns **404, not 405**, and `OPTIONS` is only answered if you call `app.cors()`.
+!!! tip "`HEAD` is answered by `GET`"
+    A `HEAD` request falls through to the matching `GET` route and returns its status and headers with an empty body. Register `app.HEAD()` only when `HEAD` needs its own handler. `OPTIONS` is still only answered if you register it or call `app.cors()`.
 
 **Hooks:**
 - `BEFORE(url, handler)`: Pre-request middleware.
@@ -112,7 +110,7 @@ class Parameter(value, potentials)
 ```
 
 **Methods:**
-- `resolve(parameter_address)`: Resolves the parameter value based on the matched route structure, performing type casting if specified (e.g. `:id:int`).
+- `resolve(parameter_address)`: Resolves the parameter value based on the matched route structure, converting it when the segment declares a type (e.g. `:id:int`). Raises `ParameterError` when the value cannot be converted, which the router treats as a non-match. The available type names are `bool`, `date`, `datetime`, `float`, `int`, `str` and `uuid`, defined once in `heaven.utils.CONVERTERS` and shared with query hints.
 
 ---
 
@@ -204,7 +202,7 @@ class Response(app, context, request)
 - `abort(payload)`: Abort execution with payload.
 - `cookie(name, value, **kwargs)`: Set cookie. Supports `max_age`, `expires`, `httponly`, `samesite`, `secure`, `domain`, `path`, `partitioned`.
 - `defer(func)`: Register an async task to run after response is sent.
-- `file(filepath, filename=None, chunk_size=4096)`: Stream a file.
+- `file(filepath, filename=None, chunk_size=4096, within=None)`: Stream a file. `within` confines the read to one directory anywhere on the filesystem (absolute, or relative to the working directory); anything resolving outside it returns 404. Pass it whenever `filepath` is derived from the request. See [Serving Files](files.md).
 - `header(key, val)`: Add a header.
 - `interpolate(name, **contexts)`: Async template rendering (returns string).
 - `json()`: Decode body as JSON (if body is dict/list, returns it).

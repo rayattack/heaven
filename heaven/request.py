@@ -1,10 +1,8 @@
-from datetime import datetime, date
 from typing import Any, TYPE_CHECKING, Union, TypeVar, Generic
-from uuid import UUID
 from urllib.parse import parse_qs
 
 from heaven.form import Form
-from heaven.utils import Lookup
+from heaven.utils import CONVERTERS, Lookup, boolean
 from orjson import dumps, loads
 from pytastic import Pytastic
 
@@ -140,19 +138,15 @@ class Request(Generic[T]):
     def qh(self, val: str):
         '''Here we process queryhints so heaven can try to coerce query string values'''
         if self.__queryhint: raise ValueError('Querystring metadata already set')
-        booleans = {'false': False, 'true': True, '1': True, 0: False}
-        def boolean(v: str) -> bool:
-            if not isinstance(v, str): return False
-            return booleans.get(v.lower()) or False
-        kinds = {
-            'int': int,
-            'str': str,
-            'float': float,
-            'datetime': datetime.fromisoformat,
-            'date': date.fromisoformat,
-            'uuid': UUID,
-            'bool': boolean
-        }
+
+        # Query values keep their historical lenient boolean, where an unreadable
+        # value reads as False. Route segments use the strict parse from CONVERTERS
+        # because there a failure means the route simply does not match.
+        def lenient_boolean(v: str) -> bool:
+            try: return boolean(v)
+            except ValueError: return False
+
+        kinds = {**CONVERTERS, 'bool': lenient_boolean}
         for pair in val.split('&'):
             try: k, v = pair.split(':')
             except: continue

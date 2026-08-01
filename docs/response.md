@@ -92,8 +92,21 @@ res.file('reports/q1.pdf', filename='Q1_Report.pdf')        # force download
 
 The content type is guessed from the extension and the file is streamed with `aiofiles`, so a large file doesn't load into memory or block the loop.
 
+### Confining the read with `within`
+
+`res.file()` serves whatever path you hand it, which is fine for a constant you wrote and not fine once any part of the path comes from the request. Pass `within` to confine the read to a single directory:
+
+```python
+def download(req, res, ctx):
+    res.file(req.params.get('name'), within='/var/lib/app/uploads')
+```
+
+The path is fully resolved before the file is opened, and anything landing outside the root returns 404. That covers `..` segments, absolute paths pointing elsewhere, and symlinks leaving the tree. `..` segments that stay inside still resolve normally. The root can be anywhere the process can reach, not just inside your project.
+
+[**Serving Files**](files.md) covers the whole surface: choosing a root, access-controlled downloads, how this relates to `app.ASSETS()`, and what is deliberately left out.
+
 !!! warning "No range requests or caching headers"
-    `res.file()` sends no `ETag`, `Last-Modified`, `Content-Length`, or `Accept-Ranges`. Browsers cannot resume, seek within, or conditionally re-request the file — which rules it out for video seeking. Serve large static assets from Nginx or a CDN and keep `res.file()` for small or access-controlled downloads.
+    `res.file()` sends no `ETag`, `Last-Modified`, `Content-Length`, or `Accept-Ranges`. Browsers cannot resume, seek within, or conditionally re-request the file, which rules it out for video seeking. Serve large static assets from Nginx or a CDN and keep `res.file()` for small or access-controlled downloads.
 
 ## Streaming
 

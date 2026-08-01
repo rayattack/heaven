@@ -43,42 +43,40 @@ Pass `methods=` to run a hook only for certain verbs:
 app.BEFORE('/orders', validate_payload, methods=['POST', 'PUT'])
 ```
 
-!!! danger "Do not reuse one hook function with mixed method scopes"
-    Method scoping is stored **on the function object**, not on the registration. Registering the same function twice — once scoped, once not — makes the scope leak into both, and the unscoped registration silently stops running.
+Scoping belongs to the registration, not to the function, so the same function can be registered in several places with different scopes:
 
-    ```python
-    app.BEFORE('/x', shared, methods=['POST'])
-    app.BEFORE('/y', shared)      # ⚠️ now also POST-only; never runs on GET /y
-    ```
+```python
+app.BEFORE('/x', shared, methods=['POST'])
+app.BEFORE('/y', shared)      # unscoped here; runs for every method on /y
+```
 
-    If you need one piece of logic in two places with different scopes, wrap it in two thin functions.
+Bound methods and other callables work too, which is what plugins normally register.
 
 ## Execution order
 
-Hooks run in the order they were registered — **within the same specificity**. Across specificities, Heaven runs **exact-match hooks first, then wildcard hooks**.
+Hooks run in the order they were registered, **within the same pattern**. Across patterns, `BEFORE` runs from the broadest pattern inward, and `AFTER` unwinds in the mirror order, so a pair registered on the same pattern brackets everything more specific.
 
 ```python
 app.BEFORE('/*', global_auth)          # registered first
 app.BEFORE('/dashboard', page_hook)    # registered second
 ```
 
-Actual order for `GET /dashboard`:
+Order for `GET /dashboard`:
 
 ```
-page_hook  →  global_auth  →  handler  →  (AFTER: exact, then wildcard)
+global_auth  →  page_hook  →  handler  →  (AFTER: page_hook, then global_auth)
 ```
 
-!!! danger "Your `/*` guard runs *last*, not first"
-    This is the single most surprising thing in Heaven, and it matters most for the case you'd most want it: **authentication registered on `/*` runs after route-specific hooks**, so a route hook can execute before the auth check that was supposed to protect it.
+With three levels of nesting the symmetry is easier to see. For `GET /users/7` matching `/users/:id`:
 
-    Until this is addressed, register security-critical guards on the **exact prefix they protect** rather than on `/*`:
+```
+BEFORE:  /*  →  /users/*  →  /users/:id  →  handler
+AFTER:                       /users/:id  →  /users/*  →  /*
+```
 
-    ```python
-    app.BEFORE('/admin/*', require_admin)   # ✅ scoped to what it guards
-    app.BEFORE('/*', require_admin)         # ⚠️ runs after more specific hooks
-    ```
+This is what you want for guards: a check registered on `/*` runs before every more specific hook, so authentication registered globally genuinely precedes the route hooks it protects. Scoping a guard to the prefix it defends (`/admin/*`) still works and remains the clearer choice when the guard only applies to part of the app.
 
-Each hook runs at most once per request even if several patterns match it.
+Each hook runs at most once per request even if several patterns match it. When a hook is registered under more than one matching pattern it runs at the earliest position it appears in.
 
 ## What a hook can do
 

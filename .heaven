@@ -40,7 +40,7 @@ app = App(
     protect_output=True,     # Strip extra fields from responses by default
     allow_partials=False,    # Allow partial responses (missing required fields) by default
     fail_on_output=True,     # Return 500 on output validation failure (vs silent fallback)
-    debug=True,              # Enable debug mode (Guardian Angel error pages)
+    debug=False,             # Guardian Angel error pages; development only
     monitor=None,            # Event loop lag monitoring interval (seconds), None to disable
 )
 ```
@@ -114,14 +114,22 @@ app.POST("/users", "handlers.users.create_user")
 app.PUT("/users/:id", "handlers.users.update_user")
 app.PATCH("/users/:id", "handlers.users.patch_user")
 app.DELETE("/users/:id", "handlers.users.delete_user")
+app.HEAD("/users", "handlers.users.head")
 app.OPTIONS("/users", "handlers.users.options")
 app.CONNECT("/users", "handlers.users.connect")
 app.TRACE("/users", "handlers.users.trace")
 
 # Register handler for ALL HTTP methods on a route
-# (CONNECT, DELETE, GET, OPTIONS, PATCH, POST, PUT, TRACE):
+# (CONNECT, DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT, TRACE):
 app.HTTP("/health", "handlers.health.check")
 ```
+
+A HEAD request is answered by the matching GET route automatically, returning the
+same status and headers with an empty body, so `app.HEAD()` is only needed when
+HEAD requires its own handler.
+
+A request whose path matches a route registered under a different method returns
+405 with an `Allow` header. A path matching no route returns 404.
 
 ### Route Parameters
 
@@ -141,18 +149,29 @@ async def get_post(req, res, ctx):
 
 #### Typed Route Parameters
 
-Parameters can be type-coerced using `:param:type` syntax. Supported types: `int`, `str`.
+Parameters can be type-coerced using `:param:type` syntax. Supported types are the
+same seven that query hints accept: `bool`, `date`, `datetime`, `float`, `int`,
+`str`, `uuid`. `date` and `datetime` parse ISO 8601; `bool` reads
+`true`/`false`/`1`/`0`.
 
 ```python
-app.GET("/users/:id:int/posts/:post_id:int", "handlers.posts.get_post")
+app.GET("/users/:id:int/posts/:post_id:uuid", "handlers.posts.get_post")
+app.GET("/reports/:day:date", "handlers.reports.for_day")
 ```
 
 ```python
 # handlers/posts.py
 async def get_post(req, res, ctx):
-    user_id = req.params.get("id")      # int (auto-coerced)
-    post_id = req.params.get("post_id")  # int (auto-coerced)
+    user_id = req.params.get("id")       # int
+    post_id = req.params.get("post_id")  # UUID
 ```
+
+A value that cannot be converted means the route does not match, so the request
+falls through to another route, a covering wildcard, or 404. A handler never
+receives an unconverted value for a segment that declared a type.
+
+An unknown type name raises `UrlError` when the route is registered, so
+`/users/:id:uuidd` fails at startup rather than silently handing back a string.
 
 ### Wildcard Routes
 
@@ -363,6 +382,21 @@ async def download(req, res, ctx):
     res.file("/path/to/report.pdf", filename="report.pdf")
 ```
 
+`res.file()` uses the path exactly as given. When any part of it comes from the
+request, pass `within=` to confine the read to a single directory:
+
+```python
+async def download(req, res, ctx):
+    res.file(req.params.get("name"), within="/var/lib/app/uploads")
+```
+
+`within` is a directory and may live anywhere the process can reach. Absolute
+values are used as given; relative ones resolve against the working directory.
+`filepath` may be relative to `within` or the full path to a file beneath it.
+Anything resolving outside returns 404, covering `..` segments, absolute paths
+pointing elsewhere, and symlinks leaving the tree. `app.ASSETS()` uses the same
+mechanism.
+
 ### Deferred Tasks
 
 Run tasks after the response is sent. Deferred functions receive the app as their argument:
@@ -518,13 +552,32 @@ app.AFTER("/*", "middleware.logging.log_response")
 
 ### Hook Execution Order
 
-1. Global BEFORE hooks (`/*`)
-2. Route-specific BEFORE hooks
-3. Handler
-4. Route-specific AFTER hooks
-5. Global AFTER hooks (`/*`)
+BEFORE hooks run from the broadest matching pattern inward; AFTER hooks unwind in
+the mirror order. For `GET /users/7` matching `/users/:id`:
+
+1. BEFORE `/*`
+2. BEFORE `/users/*`
+3. BEFORE `/users/:id`
+4. Handler
+5. AFTER `/users/:id`
+6. AFTER `/users/*`
+7. AFTER `/*`
+
+Within a single pattern, hooks run in registration order. A hook registered under
+several matching patterns runs once, at the earliest position it appears in.
 
 If a BEFORE hook calls `res.abort()`, the handler and subsequent hooks are skipped.
+
+### Method-Scoped Hooks
+
+Pass `methods=` to limit a hook to certain verbs. The scope belongs to the
+registration, so the same function can be registered elsewhere with a different
+scope, or none at all:
+
+```python
+app.BEFORE("/orders", validate, methods=["POST", "PUT"])
+app.BEFORE("/audit", validate)   # unscoped here; runs for every method
+```
 
 ## 9. Lifecycle Events
 
@@ -572,6 +625,11 @@ def sync_worker(app):
 
 app.daemons = sync_worker
 ```
+
+A daemon is bound to the app it was registered on. Mounting carries daemons onto
+the parent, which starts them on its own lifespan, but each one is still handed the
+app it came from, so `app.peek()` inside a child's daemon reads the child's buckets
+rather than the parent's. The same holds for `ONCE` startup and shutdown callbacks.
 
 ## 10. Schema Validation & API Docs
 

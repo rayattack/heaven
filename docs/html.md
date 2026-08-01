@@ -13,10 +13,10 @@ app.ASSETS('assets', '/static/*')    # serves ./assets at /static/*
 
 `assets/logo.png` is now at `http://localhost:8000/assets/logo.png`.
 
-!!! danger "`ASSETS` does not sandbox the folder — do not expose it publicly"
-    Heaven joins the requested path onto the asset folder without normalising it, so `..` segments escape the directory. A request for `/assets/../../../../etc/passwd` returns that file.
+!!! note "`ASSETS` stays inside its folder"
+    The requested path is resolved before anything is opened, and requests that land outside the asset folder return 404, whether they got there via `..` segments, an absolute path, or a symlink pointing out of the tree. `..` segments that stay inside the folder still resolve normally. `ASSETS` is a wrapper over `res.file(..., within=...)`, so the guarantees are the same ones documented in [Serving Files](files.md#confining-a-read-with-within).
 
-    **In production, serve static files from Nginx, Caddy, or a CDN** — which is faster anyway — and keep `app.ASSETS()` for local development. If you must use it on a public server, put a proxy rule in front that rejects `..` in the path.
+    **In production, serve static files from Nginx, Caddy, or a CDN anyway.** It is faster than routing them through the app.
 
 !!! tip "Paths are relative to the working directory"
     By default the folder is resolved from wherever the process was started, which breaks when you run from a different directory. Anchor it to a file instead:

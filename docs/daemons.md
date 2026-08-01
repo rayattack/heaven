@@ -95,8 +95,8 @@ WARNING:heaven.monitor:Event Loop Blocked! Lag: 0.1504s
 
 Turn it on in development. It converts "the server feels slow sometimes" into a specific line of code.
 
-!!! warning "Daemons don't survive mounting"
-    A daemon registered on a child app is dropped when that app is mounted onto a parent — it never starts. Register daemons on the app you actually run.
+!!! note "Daemons survive mounting"
+    A daemon registered on a child app is carried onto the parent when you mount it, and starts on the parent's lifespan. It is still handed the **child**, so `app.peek()` and `app.CONFIG()` inside it read the child's own state rather than the parent's. That matters because an isolated mount, the default, does not share buckets or configuration between the two.
 
 ## When you need a real queue
 

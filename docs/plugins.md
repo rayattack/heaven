@@ -126,10 +126,10 @@ async def get_users(req, res, ctx):
 app.GET("/users", get_users)
 ```
 
-!!! warning "Injecting via a `/*` hook has an ordering catch"
-    Heaven runs **exact-match hooks before wildcard hooks**, so a plugin that injects on `BEFORE('/*')` has not run yet when a route-specific `BEFORE('/users')` hook executes. That hook will see `ctx.db` as `None`.
+!!! tip "A `/*` hook runs before route-specific ones"
+    `BEFORE` hooks run from the broadest pattern inward, so a plugin injecting on `BEFORE('/*')` has already run by the time a route-specific `BEFORE('/users')` hook executes and `ctx.db` is populated.
 
-    If your plugin's resource is needed by other hooks, prefer reading it from app scope, which is populated at startup and always available:
+    If you would rather not depend on hook ordering at all, read the resource from app scope, which is populated at startup and always available:
 
     ```python
     def install(self, app):

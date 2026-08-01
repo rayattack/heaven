@@ -7,3 +7,49 @@ dist/
 .idea/
 site/
 __pycache__/
+
+# AI Contributions are welcome, but your setup preferences and side-effects are not
+# Claude Code
+CLAUDE.md
+.claude/
+
+# Cursor
+.cursor/
+.cursorrules
+.cursorignore
+.cursorindexingignore
+
+# Windsurf / Codeium
+.windsurf/
+.windsurfrules
+.codeium/
+
+# Google Gemini CLI / Antigravity
+.gemini/
+GEMINI.md
+.antigravity/
+
+# Qwen Code
+.qwen/
+QWEN.md
+
+# Aider
+.aider*
+
+# Cline / Roo Code
+.clinerules
+.clinerules/
+.roo/
+.roorules
+.roomodes
+
+# Continue
+.continue/
+
+# OpenAI Codex CLI / cross-tool agent instructions
+.codex/
+AGENTS.md
+
+# Zed
+.zed/
+

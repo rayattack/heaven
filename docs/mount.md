@@ -1,7 +1,7 @@
 # Mounting Routers
 
 !!! note "This page has moved"
-    Mounting is now covered alongside subdomains in **[Min 07-08 — Subdomains & Mounting](subdomains.md#mounting)**, which also documents hook ordering across mounts and the two limitations to know about (no path prefix, and daemons are not carried over).
+    Mounting is now covered alongside subdomains in **[Min 07-08 — Subdomains & Mounting](subdomains.md#mounting)**, which also documents hook ordering across mounts and the one limitation to know about: there is no path prefix.
 
 ## The short version
 

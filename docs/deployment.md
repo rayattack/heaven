@@ -6,10 +6,10 @@ Heaven is an ASGI application, so anything that serves ASGI serves Heaven: `uvic
 
 Run through this before the first public request:
 
-- [x] `App(debug=False)` — otherwise tracebacks are served to clients
+- [x] `debug` left off (the default), so tracebacks are not served to clients
 - [x] `SECRET_KEY` read from the environment, never committed
 - [x] Static files served by your proxy, not `app.ASSETS()` ([why](html.md#static-files))
-- [x] A body-size limit in the proxy — Heaven has none
+- [x] A body-size limit in the proxy, since Heaven has none
 - [x] `--no-reload`
 - [x] Security headers ([copy-paste hook](production.md))
 
@@ -37,8 +37,8 @@ Run through this before the first public request:
 
     Gunicorn's process supervision — restarting workers that die or leak — is what you want on a long-running host.
 
-!!! warning "`app.listen()` is broken on modern uvicorn"
-    `Router.listen()` passes a `debug=` argument that uvicorn removed years ago, so it raises `TypeError`. Use the CLI or run uvicorn directly.
+!!! tip "`app.listen()` is for local runs"
+    `Router.listen()` starts uvicorn in-process, which is fine for development. On a real host prefer the CLI or a supervised uvicorn/gunicorn command so you get process management.
 
 !!! danger "Workers multiply your daemons"
     Each worker process runs its own copy of every [daemon](daemons.md). With `--workers 4`, a cleanup daemon runs four times on every tick. Either run daemons in a single dedicated process, or make them idempotent and safe to race.
@@ -59,9 +59,6 @@ ENV PYTHONUNBUFFERED=1
 
 CMD ["heaven", "run", "main:app", "--host", "0.0.0.0", "--port", "8000", "--no-reload"]
 ```
-
-!!! tip "Pin `orjson` yourself"
-    Heaven imports `orjson` but does not currently declare it as a dependency, so a clean install can fail at `import heaven`. Put `orjson` in your own `requirements.txt` until that's fixed upstream.
 
 ## Behind a proxy
 

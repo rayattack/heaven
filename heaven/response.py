@@ -1,6 +1,6 @@
 import mimetypes
 from http import HTTPStatus
-from os import path
+from os import path, sep
 from typing import Any, AsyncGenerator, Optional, Union, TYPE_CHECKING
 import traceback
 import sys
@@ -238,9 +238,13 @@ class Response():
             
             async def sse_wrapper():
                 async for item in generator:
-                    # If item is a dict or list, encode as JSON
+                    # If item is a dict or list, encode as JSON. dumps() hands back
+                    # bytes, which must be decoded before it reaches the f-string or
+                    # the frame carries the bytes repr rather than the payload.
                     if isinstance(item, (dict, list)):
-                        item = dumps(item)
+                        item = dumps(item).decode()
+                    elif isinstance(item, (bytes, bytearray)):
+                        item = item.decode()
                     yield f"data: {item}\n\n".encode()
             self.body = sse_wrapper()
         else:
@@ -273,8 +277,26 @@ class Response():
         template = templater.get_template(name)
         return await template.render_async({'ctx': self._ctx, **contexts})
 
-    def file(self, filepath: str, filename: Optional[str] = None, chunk_size: int = 4096) -> 'Response':
-        """Serve a file from the filesystem with streaming support"""
+    def file(self, filepath: str, filename: Optional[str] = None, chunk_size: int = 4096, within: Optional[str] = None) -> 'Response':
+        """Serve a file from the filesystem with streaming support.
+
+        `within` confines the read to one directory. It can be anywhere the process
+        can reach - a folder in the project, `/var/lib/app/uploads`, a mounted share -
+        and is taken as given when absolute, or resolved against the working directory
+        when relative. `filepath` may be either relative to `within` or the full path
+        to a file under it; anything resolving outside is a 404, which covers `..`
+        segments, absolute paths pointing elsewhere, and symlinks leaving the tree.
+
+            res.file(req.params.get('name'), within='/var/lib/app/uploads')
+        """
+        if within is not None:
+            root = path.realpath(within)
+            filepath = path.realpath(path.join(root, filepath))
+            if filepath != root and not filepath.startswith(root + sep):
+                self.status = HTTPStatus.NOT_FOUND
+                self.body = b'File not found'
+                return self
+
         if not path.isfile(filepath):
             self.status = HTTPStatus.NOT_FOUND
             self.body = b'File not found'

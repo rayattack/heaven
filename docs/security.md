@@ -103,16 +103,31 @@ data = signer.loads(token, type=ResetToken)
 !!! note "Tokens expire in 2106"
     Timestamps are packed as unsigned 32-bit integers, so signed tokens roll over on 7 February 2106. Noting it for completeness rather than urgency.
 
-## Turn off debug in production
+## The debug error page
 
 ```python
-app = App(debug=False)
+app = App(debug=True)   # development only
 ```
 
-!!! danger "`debug=True` is the default"
+Debug mode is **off by default**. With it off, an unhandled exception returns a plain `500 Internal Server Error` and the traceback is written to your logs.
+
+!!! warning "Only enable `debug` in development"
     In debug mode an unhandled exception renders a "Guardian Angel" page containing the **exception message, full traceback, handler name, and Python version**. If your exception text includes a connection string or credential, that goes straight to the client.
 
-    Set `debug=False` for anything reachable from the internet. It is the single most important production setting in Heaven.
+    Leave it off for anything reachable from the internet.
+
+## Serving files from a request path
+
+When a handler builds a file path out of anything the caller supplied, pass `within` so the read cannot leave the directory you meant:
+
+```python
+async def download(req, res, ctx):
+    res.file(req.params.get('name'), within='/var/lib/app/uploads')
+```
+
+Without it, `res.file()` uses the path exactly as given, and a `name` of `../../etc/passwd` reads that file. With it, the path is fully resolved before anything is opened and anything landing outside the root returns 404, which also covers absolute paths and symlinks pointing out of the tree.
+
+This applies to values that reach the path indirectly too, such as a filename read back from a database row that a user controls. `app.ASSETS()` already does this for the folder it mounts. [Serving Files](files.md) covers the details.
 
 ## What Heaven does not provide
 

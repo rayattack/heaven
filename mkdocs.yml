@@ -54,21 +54,22 @@ nav:
     - 'Min 01-02 &mdash; The Beginning': quickstart.md
     - 'Min 03-04 &mdash; The Command Line': cli.md
     - 'Min 05-06 &mdash; The Router': router.md
-    - 'Min 07-08 &mdash; Subdomains & Mounting': subdomains.md
+    - 'Min 07-08 &mdash; Subdomains': subdomains.md
     - 'Min 09-10 &mdash; The Request': request.md
     - 'Min 11-12 &mdash; The Response': response.md
-    - 'Min 13-14 &mdash; Templates & Assets': html.md
+    - 'Min 13-14 &mdash; HTML & Assets': html.md
     - 'Min 15-16 &mdash; The Context': context.md
     - 'Min 17-18 &mdash; Hooks': hooks.md
-    - 'Min 19-20 &mdash; Schemas & Validation': schema.md
+    - 'Min 19-20 &mdash; Validation': schema.md
     - 'Min 21-22 &mdash; API Docs': openapi.md
     - 'Min 23-24 &mdash; Testing with Earth': earth.md
     - 'Min 25-26 &mdash; Background Work': daemons.md
-    - 'Min 27-28 &mdash; Security & Sessions': security.md
+    - 'Min 27-28 &mdash; Security': security.md
     - 'Min 29-30 &mdash; Deployment': deployment.md
     - 'Mastery': congrats.md
   - Reference:
     - 'API Reference': api.md
+    - 'Serving Files': files.md
     - 'Performance': performance.md
     - 'Recipes': examples.md
     - 'Going to Production': production.md

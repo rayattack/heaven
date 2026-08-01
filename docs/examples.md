@@ -24,8 +24,8 @@ async def authenticate(req, res, ctx):
 app.BEFORE('/api/*', authenticate)
 ```
 
-!!! warning "Scope the guard to what it protects"
-    Register auth on the **exact prefix** it defends (`/api/*`), not on `/*`. Heaven runs exact-match hooks before wildcard ones, so a `/*` guard runs *after* route-specific hooks. See [Hooks](hooks.md#execution-order).
+!!! tip "Scope the guard to what it protects"
+    Registering auth on the **exact prefix** it defends (`/api/*`) keeps it off routes that do not need it. A `/*` guard also works, since `BEFORE` hooks run from the broadest pattern inward. See [Hooks](hooks.md#execution-order).
 
 ## Role-based authorization
 

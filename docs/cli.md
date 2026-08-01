@@ -51,8 +51,8 @@ heaven routes
 heaven routes --app main:app
 ```
 
-!!! tip "Check `routes` before you debug a 404"
-    Heaven returns 404 — not 405 — when a path exists but the method doesn't. If a `POST` is mysteriously 404-ing, this table usually shows you a route registered as `GET` and the mystery evaporates.
+!!! tip "Check `routes` before you debug a 405"
+    A path that exists under a different method returns 405 with an `Allow` header. If a `POST` is coming back 405, this table shows you which methods that route actually registered.
 
 ## `handlers` — where is this code?
 

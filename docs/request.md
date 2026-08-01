@@ -11,7 +11,7 @@ async def handler(req, res, ctx):
 
 | You want | Read it from | Type |
 | :--- | :--- | :--- |
-| `/users/42` → `42` | `req.params.get('id')` | str, or int with `:int` |
+| `/users/42` → `42` | `req.params.get('id')` | str, or the declared type |
 | `?page=3` | `req.queries.get('page')` | str, or coerced |
 | A JSON body | `req.json` | dict / list |
 | A **validated** body | `req.data` | dict (see [Schemas](schema.md)) |
@@ -30,14 +30,18 @@ async def handler(req, res, ctx):
     req.params.get('order_id')  # '7'
 ```
 
-Add `:int` to get an integer instead of a string:
+Add a type to get it converted instead of a string:
 
 ```python
-app.GET('/users/:id:int', handler)   # req.params.get('id') -> 42
+app.GET('/users/:id:int', handler)      # req.params.get('id')  -> 42
+app.GET('/report/:day:date', handler)   # req.params.get('day') -> date(2026, 8, 1)
+app.GET('/item/:sku:uuid', handler)     # req.params.get('sku') -> UUID(...)
 ```
 
-!!! warning "`:int` is the only path cast that works"
-    `/report/:day:date` and `/item/:sku:uuid` are accepted without complaint but still hand you a **string**. Only `:int` (and the no-op `:str`) actually convert. Query strings are different — they support the full type set.
+Path segments and query strings accept the same seven names: `:int`, `:float`, `:bool`, `:str`, `:date`, `:datetime`, `:uuid`. See [the router](router.md#path-parameters) for the full table.
+
+!!! note "Paths and query strings differ on bad input"
+    A path segment that cannot convert makes the route **not match**, so the request falls through to another route or 404 and your handler never sees an unconverted value. A query string is more forgiving and hands you the raw string instead, because a bad `?page=` should not hide the whole endpoint.
 
 ## Query strings
 
@@ -59,10 +63,10 @@ req.queries.get('since')   # date(2026, 1, 1)  date
 req.queries.get('exact')   # True              bool
 ```
 
-Supported: `:int`, `:float`, `:bool`, `:str`, `:date`, `:datetime`, `:uuid`.
+Supported: `:int`, `:float`, `:bool`, `:str`, `:date`, `:datetime`, `:uuid`. The same names work in [path segments](#path-parameters).
 
 !!! note "Bad input does not raise"
-    `?page=banana` gives you the string `'banana'`, not a 422. Check anything you rely on.
+    `?page=banana` gives you the string `'banana'`, not a 422. A `:bool` that cannot be read is the one exception and comes back `False`. Check anything you rely on.
 
 ## JSON bodies
 

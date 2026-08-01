@@ -69,6 +69,6 @@ app.GET('/api/v1/login', login)
 ```
 
 !!! tip "Matching every request"
-    Use `.BEFORE('/*', handler)` to run a hook for every request in your application — for logging, timing, or headers.
+    Use `.BEFORE('/*', handler)` to run a hook for every request in your application, for logging, timing, or headers.
 
-    The leading slash is required: `.BEFORE('*', handler)` raises `UrlError`. And note that `/*` hooks run **after** more specific hooks, so scope security guards to the prefix they protect rather than globally — see [execution order](hooks.md#execution-order).
+    The leading slash is required: `.BEFORE('*', handler)` raises `UrlError`. `/*` hooks run **before** more specific hooks, so a global guard precedes the route hooks it protects. See [execution order](hooks.md#execution-order).

@@ -47,8 +47,8 @@ Everything else is a detail hanging off those four ideas:
 
 The [production checklist](deployment.md#the-pre-flight-checklist) is short and each item exists because it bites people. The two that matter most:
 
-!!! danger "Set `debug=False` and don't use `app.ASSETS()` publicly"
-    Debug mode serves tracebacks to clients, and `ASSETS` will serve files outside its folder if asked nicely. Both are covered in [Security](security.md) and [Templates & Assets](html.md).
+!!! warning "Leave `debug` off, and let your proxy serve static files"
+    Debug mode serves tracebacks to clients, so keep it to development. `app.ASSETS()` is safe to leave mounted, but a proxy or CDN will serve those files faster. Both are covered in [Security](security.md) and [Templates & Assets](html.md).
 
 ## Contributing
 

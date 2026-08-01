@@ -113,8 +113,7 @@ parent BEFORE → child BEFORE → handler → child AFTER → parent AFTER
 !!! warning "No path prefix"
     Heaven has no `mount(child, prefix='/blog')`. Child routes mount at their **literal** paths, so a child's `/posts` is served at `/posts`, not `/blog/posts`. Include the prefix in the child's own route strings if you want one.
 
-!!! warning "Daemons are not carried over"
-    A mounted child's background daemons are silently dropped — they never start. Register daemons on the app you actually run.
+Daemons, startup callbacks and shutdown callbacks all come across with the child and run on the parent's lifespan. Each is handed the app it was registered on, so a child's daemon still reads the child's own buckets and configuration even though the parent is what actually runs.
 
 ## Which one should you use?
 

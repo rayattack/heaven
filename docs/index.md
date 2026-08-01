@@ -21,6 +21,17 @@ That is the entire mental model. **Every** handler in Heaven — route, hook, or
 
 ---
 
+## Request throughput: Heaven vs FastAPI
+
+Both frameworks driven through their raw ASGI callable in-process — no sockets, no uvicorn — so the numbers isolate routing, request/response construction, validation, and serialization. Async handlers on both sides.
+
+| Scenario | Heaven | FastAPI | FastAPI + ORJSONResponse |
+| :--- | ---: | ---: | ---: |
+| `GET /users/:id` → small JSON | **18,237/s** | 6,529/s | 7,387/s |
+| `POST /orders` → validated in and out | **11,292/s** | 6,716/s | 6,921/s |
+
+Heaven is **2.5–2.8× faster** on the simple GET and **~1.6× faster** on the validated POST.
+
 ## The three objects
 
 Heaven splits a request into three roles and keeps them strictly separate. This one idea explains most of the framework.

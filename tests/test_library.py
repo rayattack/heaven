@@ -4,7 +4,7 @@ import heaven
 
 class TestLibrary(unittest.TestCase):
     def test_version(self):
-        self.assertEqual(heaven.__version__, '1.4.1')
+        self.assertEqual(heaven.__version__, '1.5.0')
 
     def test_schema_export(self):
         from pytastic import Pytastic
