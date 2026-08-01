@@ -7,4 +7,4 @@ from .schema import Pytastic, PytasticError, ValidationError
 from .context import Context, Key
 
 
-__version__ = '1.5.0'
+__version__ = '2.0.0'

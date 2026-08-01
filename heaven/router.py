@@ -272,15 +272,22 @@ class Routes(object):
         self.cache = {CONNECT: {}, DELETE: {}, GET: {}, HEAD: {}, OPTIONS: {}, PATCH: {}, POST: {}, PUT: {}, TRACE: {}, SOCKET: {}}
         self.routes = {}
 
-    def add(self, method: str, route: str, handler: Callable, router: 'Router'):
+        # (method, route) pairs whose body is handed to the handler in chunks
+        # instead of being buffered before it runs
+        self.streams = set()
+
+    def add(self, method: str, route: str, handler: Callable, router: 'Router', stream=False):
         """
         method: one of POST, GET, OPTIONS... etc - i.e. the HTTP method
         route: the route url/endpoint
         handler: function corresponding to the signature of a heaven handler
+        stream: leave the body unread so the handler can consume it with req.stream()
         """
         queryhint = ''
         if len(route.split('?')) > 1:
             route, queryhint = route.split('?', 1)
+
+        if stream: self.streams.add((method, route))
 
         # ensure the method and route combo has not been already registered
         try: assert self.cache.get(method, {}).get(route) is None
@@ -436,6 +443,46 @@ class Routes(object):
         w.body = b'Method not allowed'
         return w
 
+    async def buffer(self, r: Request, receive, w: Response, application):
+        """Read the whole request body onto the Request. Returns False when it goes
+        past the app's `max_body_size`, leaving a 413 on the response and stopping
+        the read rather than accumulating the rest of it."""
+        limit = getattr(application, '_max_body_size', None)
+
+        chunks = []
+        size = 0
+        oversized = False
+        more = True
+        while more:
+            message = await receive()
+            chunk = message.get('body', b'')
+            more = message.get('more_body', False)
+
+            # Past the limit we keep reading but stop keeping, so memory holds at the
+            # ceiling while the client still gets to finish sending and read the 413.
+            # Responding mid-upload instead resets the connection and the client sees
+            # a broken pipe rather than the reason it was refused.
+            if oversized: continue
+
+            size += len(chunk)
+            if limit is not None and size > limit:
+                oversized = True
+                chunks = []
+                continue
+
+            chunks.append(chunk)
+
+        if oversized:
+            w.status = 413
+            w.body = b'Payload too large'
+            return False
+
+        # joined once. Repeatedly concatenating onto a bytes object copies everything
+        # accumulated so far on each of the hundreds of chunks a server sends, which
+        # is quadratic in the size of the upload.
+        r._body = b''.join(chunks)
+        return True
+
     async def handle(self, scope, receive, send, metadata=None, application=None):
         """
         Traverse internal route tree and use appropriate method
@@ -443,15 +490,7 @@ class Routes(object):
         method = scope.get('method')
         if scope['type'] == 'websocket': method = SOCKET
 
-        body = b''
-        if scope['type'] == 'http':
-            more = True
-            while more:
-                msg = await receive()
-                body += msg.get('body', b'')
-                more = msg.get('more_body', False)
-
-        r = Request(scope, body, receive, metadata, application)
+        r = Request(scope, b'', receive, metadata, application)
         c = Context(application)
         w = Response(context=c, app=application, request=r)
 
@@ -463,7 +502,13 @@ class Routes(object):
         if not matched and method == HEAD:
             matched, handler, route_node = self.resolve(GET, route, r)
 
+        # Resolving first means a body is only read once we know somewhere wants it,
+        # so an unmatched url no longer buffers whatever was sent with it.
         if not matched: return self.unmatched(scope, method, route, w)
+
+        if scope['type'] == 'http':
+            if (method, matched) in self.streams: r._streaming = True
+            elif not await self.buffer(r, receive, w, application): return w
 
         r._application = route_node.heaven_instance
         r._route = matched
@@ -634,9 +679,9 @@ class SubdomainContext:
     def HEAD(self, route: str, handler: Handler): self.app.HEAD(route, handler, subdomain=self.name)
     def HTTP(self, route: str, handler: Handler): self.app.HTTP(route, handler, subdomain=self.name)
     def OPTIONS(self, route: str, handler: Handler): self.app.OPTIONS(route, handler, subdomain=self.name)
-    def PATCH(self, route: str, handler: Handler): self.app.PATCH(route, handler, subdomain=self.name)
-    def POST(self, route: str, handler: Handler): self.app.POST(route, handler, subdomain=self.name)
-    def PUT(self, route: str, handler: Handler): self.app.PUT(route, handler, subdomain=self.name)
+    def PATCH(self, route: str, handler: Handler, stream=False): self.app.PATCH(route, handler, subdomain=self.name, stream=stream)
+    def POST(self, route: str, handler: Handler, stream=False): self.app.POST(route, handler, subdomain=self.name, stream=stream)
+    def PUT(self, route: str, handler: Handler, stream=False): self.app.PUT(route, handler, subdomain=self.name, stream=stream)
     def TRACE(self, route: str, handler: Handler): self.app.TRACE(route, handler, subdomain=self.name)
     def SOCKET(self, route: str, handler: Handler): self.app.SOCKET(route, handler, subdomain=self.name)
     def WEBSOCKET(self, route: str, handler: Handler): self.app.WEBSOCKET(route, handler, subdomain=self.name)
@@ -648,8 +693,9 @@ class SubdomainContext:
 
 
 class Router(object):
-    def __init__(self, configurator=None, protect_output=True, allow_partials=False, fail_on_output=True, debug=False, monitor: Union[float, None] = None):
+    def __init__(self, configurator=None, protect_output=True, allow_partials=False, fail_on_output=True, debug=False, monitor: Union[float, None] = None, max_body_size: Union[int, None] = None):
         self._debug = debug
+        self._max_body_size = max_body_size
         self.__ws = None
         self.finalized = False
         self.initializers = deque()
@@ -832,13 +878,13 @@ class Router(object):
             if iscoroutinefunction(deinitializer): await deinitializer(self)
             else: deinitializer(self)
 
-    def abettor(self, method: str, route: str, handler: Handler, subdomain=DEFAULT, router = None):
+    def abettor(self, method: str, route: str, handler: Handler, subdomain=DEFAULT, router = None, stream=False):
         if not route.startswith('/'): raise UrlError(f'{route} is not a valid route - must start with /')
         handler = _string_to_function_handler(handler)
         engine = self.subdomains.get(subdomain)
         if not isinstance(engine, Routes):
             raise SubdomainError
-        engine.add(method, route, handler, router or self)
+        engine.add(method, route, handler, router or self, stream=stream)
 
     def call(self, handler: str, *args, **kwargs):
         if isinstance(handler, str): handler = _string_to_function_handler(handler)
@@ -1126,7 +1172,9 @@ class Router(object):
                         closured_handler = _closure_mounted_ws(handler, router)
                     else:
                         closured_handler = _closure_mounted_application(handler, router)
-                    self.abettor(method, route, closured_handler, subdomain=subdomain, router=router if isolated else self)
+                    self.abettor(method, route, closured_handler, subdomain=subdomain,
+                                 router=router if isolated else self,
+                                 stream=(method, route) in engine.streams)
             for after in engine.afters:
                 self.subdomains[subdomain].afters[after] = [*engine.afters[after], *self.subdomains[subdomain].afters.get(after, [])]
             for before in engine.befores:
@@ -1186,14 +1234,14 @@ class Router(object):
     def OPTIONS(self, route: str, handler: Handler, subdomain=DEFAULT):
         self.abettor(METHOD_OPTIONS, route, handler, subdomain)
 
-    def PATCH(self, route: str, handler: Handler, subdomain=DEFAULT):
-        self.abettor(METHOD_PATCH, route, handler, subdomain)
+    def PATCH(self, route: str, handler: Handler, subdomain=DEFAULT, stream=False):
+        self.abettor(METHOD_PATCH, route, handler, subdomain, stream=stream)
 
-    def POST(self, route: str, handler: Handler, subdomain=DEFAULT):
-        self.abettor(METHOD_POST, route, handler, subdomain)
+    def POST(self, route: str, handler: Handler, subdomain=DEFAULT, stream=False):
+        self.abettor(METHOD_POST, route, handler, subdomain, stream=stream)
 
-    def PUT(self, route: str, handler: Handler, subdomain=DEFAULT):
-        self.abettor(METHOD_PUT, route, handler, subdomain)
+    def PUT(self, route: str, handler: Handler, subdomain=DEFAULT, stream=False):
+        self.abettor(METHOD_PUT, route, handler, subdomain, stream=stream)
 
     def TRACE(self, route: str, handler: Handler, subdomain=DEFAULT):
         self.abettor(METHOD_TRACE, route, handler, subdomain)

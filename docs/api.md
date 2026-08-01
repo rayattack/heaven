@@ -7,7 +7,7 @@ The core application class that manages routing, configuration, and lifecycle.
 
 ```python
 class Router(configurator=None, protect_output=True, allow_partials=False,
-             fail_on_output=True, debug=False, monitor=None)
+             fail_on_output=True, debug=False, monitor=None, max_body_size=None)
 ```
 
 **Parameters:**
@@ -17,6 +17,7 @@ class Router(configurator=None, protect_output=True, allow_partials=False,
 - `fail_on_output` (bool): Return 500 when a response fails its `returns` schema, instead of sending it anyway. Default `True`.
 - `debug` (bool): Serve the Guardian Angel error page on unhandled exceptions. Default `False`.
 - `monitor` (float, optional): Warn when the event loop is blocked for longer than this many seconds. Off by default.
+- `max_body_size` (int, optional): Largest request body a buffered route will accept, in bytes. Past it the request gets `413` and nothing further is retained, so memory holds at the ceiling; the remainder is read and discarded so the client receives the response rather than a reset connection. `None` (the default) means no limit. Routes registered with `stream=True` are not subject to it. See [Serving Files](files.md#receiving-uploads).
 
 !!! tip "`debug` is off by default"
     With `debug=False` an unhandled exception returns a plain `500 Internal Server Error` and the traceback goes to your logs only. Pass `debug=True` in development to get the Guardian Angel page, which renders the exception message and full traceback in the browser. See [Security](security.md#the-debug-error-page).
@@ -43,7 +44,7 @@ class Router(configurator=None, protect_output=True, allow_partials=False,
 
 **Routing Shortcuts:**
 
-All take `(route, handler, subdomain='www')`.
+All take `(route, handler, subdomain='www')`. `POST`, `PUT` and `PATCH` additionally take `stream=False`; passing `stream=True` leaves the body unread for `req.stream()`.
 
 - `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, `OPTIONS`, `CONNECT`, `TRACE`
 - `SOCKET(url, handler)` — WebSocket handler. Aliases: `WS`, `WEBSOCKET`.
@@ -94,7 +95,8 @@ class Routes()
 - `routes`: The root nodes of the Radix-like tree.
 
 **Methods:**
-- `add(method, route, handler, router)`: Register a route. Handles splitting paths and creating `Route` nodes.
+- `add(method, route, handler, router, stream=False)`: Register a route. Handles splitting paths and creating `Route` nodes. `stream=True` records the route as one whose body is not buffered.
+- `buffer(r, receive, w, application)`: Read the request body onto the `Request`, enforcing `max_body_size`. Returns `False` and leaves a `413` on the response when the limit is passed.
 - `get_handler(routes)`: (Stub) Retrieve handler.
 - `handle(scope, receive, send, metadata, application)`: Main ASGI request handling logic. Orchestrates `Request`, `Response`, `Context`, and middleware execution.
 - `remove(method, route)`: Unregister a route.
@@ -137,7 +139,7 @@ class Request(scope, body, receive, metadata=None, application=None)
 - `body`: Raw request body (bytes).
 - `cookies`: Dictionary of cookies.
 - `data`: Validated/Typed request body (if schema present), else alias for `json`.
-- `form`: `Form` instance (lazy loaded).
+- `form`: `Form` instance (lazy loaded), or `None` without a form content type. On a `stream=True` route it starts unparsed: get it with `form = await req.form`, which parses the body incrementally. Awaiting on a buffered route is harmless.
 - `headers`: Dictionary of headers.
 - `host`: Host header value.
 - `ip`: Client IP access (`req.ip.address`).
@@ -155,29 +157,45 @@ class Request(scope, body, receive, metadata=None, application=None)
 - `url`: Request URL path.
 
 **Methods:**
-- `stream()`: Async generator for request body (TODO).
+- `stream()`: Async generator yielding the request body in chunks, for routes registered with `stream=True`. Raises `RuntimeError` on a buffered route, or if the body has already been consumed. On a streaming route `body`, `json` and `data` raise instead, since nothing was buffered; `form` works but must be awaited. The body arrives once, so `req.stream()` and `await req.form` are mutually exclusive.
 
 ---
 
 ### `Form`
-Handles multipart/form-data and urlencoded parsing.
+Handles multipart/form-data and urlencoded parsing. On a buffered route the form is parsed by the time the handler runs; on a `stream=True` route it parses off the live request stream when awaited, spilling file parts larger than `SPOOL_LIMIT` to a temporary file.
 
 ```python
 class Form(req)
 ```
 
-**Attributes:**
-- `_data`: Dictionary of parsed data.
-
 **Methods:**
 - `get(name, default=None)`: Retrieve a field value.
 - `to_dict()`: Return internal dictionary.
 - `__getattr__(name)`: Attribute access to fields.
+- `__await__`: `await req.form` parses a streaming form and returns it; on an already parsed form it returns immediately. Reading fields on a streaming route before awaiting raises `RuntimeError`.
 
-**Internal Methods:**
-- `_parse(req)`
-- `_parse_multipart(req, content_type)`
-- `_parse_urlencoded(req)`
+**Module constants** (ceilings on what one form may cost, settable before serving):
+- `FIELD_LIMIT` (1MB): Largest single non-file field value, and largest streamed urlencoded body.
+- `SPOOL_LIMIT` (256KB): File parts above this move from memory to a temp file on disk.
+- `HEADERS_LIMIT` (16KB): Largest header block of one part.
+- `PARTS_LIMIT` (1000): Most parts in one form.
+
+A form that breaks a ceiling, or a multipart body without its closing boundary, raises `ValueError`; on a streaming route the rest of the body is drained first so the client receives the error response instead of a connection reset.
+
+---
+
+### `File`
+One uploaded file part of a form.
+
+**Properties:**
+- `filename`: Name the client declared.
+- `content_type`: Declared content type of the part, or `None`.
+- `content`: The whole file as bytes. A part that spilled to disk is read back in full, so prefer `save()` or `file` for anything large.
+- `size`: Bytes received for this part.
+- `file`: A binary file object positioned at the start; the spool for a streamed part, an in-memory reader otherwise.
+
+**Methods:**
+- `save(destination)`: Copy the upload to `destination` in chunks, never holding it whole.
 
 ---
 
@@ -203,7 +221,7 @@ class Response(app, context, request)
 - `cookie(name, value, **kwargs)`: Set cookie. Supports `max_age`, `expires`, `httponly`, `samesite`, `secure`, `domain`, `path`, `partitioned`.
 - `defer(func)`: Register an async task to run after response is sent.
 - `file(filepath, filename=None, chunk_size=4096, within=None)`: Stream a file. `within` confines the read to one directory anywhere on the filesystem (absolute, or relative to the working directory); anything resolving outside it returns 404. Pass it whenever `filepath` is derived from the request. See [Serving Files](files.md).
-- `header(key, val)`: Add a header.
+- `header(key, val)`: Set a header, replacing any value it already has (case-insensitive, last write wins). `Set-Cookie` accumulates instead, one line per cookie. A list, tuple or set value is comma-joined; `None` removes the header. The `res.headers = key, val` assignment is the same operation.
 - `interpolate(name, **contexts)`: Async template rendering (returns string).
 - `json()`: Decode body as JSON (if body is dict/list, returns it).
 - `out(status, body, headers=None)`: Set status, body, and headers at once.

@@ -31,12 +31,15 @@ class Request(Generic[T]):
         self._dirty = False
         self._queried = False
         self._mounted_from_application = None
+        self._streaming = False
+        self._streamed = False
 
     @property
     def json(self):
         """Returns the json body of the request"""
-        if not self._body: return None
-        return loads(self._body)
+        body = self.body
+        if not body: return None
+        return loads(body)
 
     @property
     def data(self) -> T:
@@ -82,6 +85,11 @@ class Request(Generic[T]):
 
     @property
     def body(self):
+        if self._streaming:
+            raise RuntimeError(
+                'This route was registered with stream=True so its body was never '
+                'buffered. Read it with `async for chunk in req.stream():` instead.'
+            )
         return self._body
 
     @property
@@ -102,6 +110,12 @@ class Request(Generic[T]):
 
     @property
     def form(self) -> Union["Form", None]:
+        """The parsed form, or None when the request has no form content type.
+        On a route registered with stream=True nothing is buffered ahead of the
+        handler, so the form starts unparsed: get it with `form = await req.form`,
+        which reads the body incrementally and spills large file parts to disk.
+        Awaiting is harmless on a buffered route, where the form is parsed already.
+        """
         content_type = self.headers.get("content-type", "")
         if not ("multipart/form-data" in content_type or "application/x-www-form-urlencoded" in content_type):
             return None
@@ -221,6 +235,32 @@ class Request(Generic[T]):
         return self._scope.get("path")
 
     async def stream(self):
-        """TODO: Revisit and implement with appropriate testing"""
-        return await self._receive()
+        """Yield the request body chunk by chunk, so a large upload never has to sit
+        in memory. Available on routes registered with `stream=True`; on any other
+        route the body has already been read and is waiting on `req.body`.
+
+            app.POST('/upload', save, stream=True)
+
+            async def save(req, res, ctx):
+                async with async_open(target, 'wb') as f:
+                    async for chunk in req.stream():
+                        await f.write(chunk)
+
+        The body arrives once and is not retained, so it can only be streamed once.
+        """
+        if not self._streaming:
+            raise RuntimeError(
+                'Register this route with stream=True to read its body as a stream. '
+                'Without it the body is buffered already and available as req.body.'
+            )
+        if self._streamed:
+            raise RuntimeError('The request body has already been streamed')
+        self._streamed = True
+
+        more = True
+        while more:
+            message = await self._receive()
+            chunk = message.get('body', b'')
+            if chunk: yield chunk
+            more = message.get('more_body', False)
 

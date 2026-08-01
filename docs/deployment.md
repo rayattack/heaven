@@ -9,7 +9,7 @@ Run through this before the first public request:
 - [x] `debug` left off (the default), so tracebacks are not served to clients
 - [x] `SECRET_KEY` read from the environment, never committed
 - [x] Static files served by your proxy, not `app.ASSETS()` ([why](html.md#static-files))
-- [x] A body-size limit in the proxy, since Heaven has none
+- [x] `App(max_body_size=...)` set, and a matching cap in the proxy
 - [x] `--no-reload`
 - [x] Security headers ([copy-paste hook](production.md))
 
@@ -69,7 +69,7 @@ server {
     listen 443 ssl http2;
     server_name example.com;
 
-    client_max_body_size 10M;          # Heaven has no limit of its own
+    client_max_body_size 10M;          # belt and braces with App(max_body_size=...)
 
     location /static/ {
         alias /var/www/app/assets/;    # faster, and avoids app.ASSETS()

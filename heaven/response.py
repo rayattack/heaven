@@ -118,12 +118,22 @@ class Response():
         return HTTPStatus
 
     def header(self, key, val) -> 'Response':
+        """Set `key` to `val`, replacing any value the response already carries
+        for it, matched case-insensitively: the last write wins, so setting a
+        header twice sends it once. `Set-Cookie` is the exception and accumulates
+        one line per cookie, which is how the protocol requires cookies to travel.
+        A list, tuple or set value is joined with commas, the HTTP form of a
+        multi-valued header, and `None` removes the header entirely."""
+        _encode = lambda k: k.encode('utf-8') if isinstance(k, str) else k
+        name = _encode(key)
+        needle = name.lower()
+        if val is None or needle != b'set-cookie':
+            self._headers = [header for header in self._headers if header[0].lower() != needle]
+        if val is None: return self
+
         if isinstance(val, (list, tuple, set)): val = ', '.join(map(str, val))
         else: val = str(val)
-
-        _encode = lambda k: k.encode('utf-8') if isinstance(k, str) else k
-        value = _encode(key), _encode(val)
-        self._headers.append(value)
+        self._headers.append((name, _encode(val)))
         return self
 
     @property

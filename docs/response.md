@@ -42,17 +42,26 @@ if res.status == res.http.UNAUTHORIZED:
 
 ## Headers
 
-Assign a `(key, value)` tuple. Each assignment **adds** a header:
+Assign a `(key, value)` tuple. Assigning a header the response already carries **replaces** it, matched case-insensitively, so the last write wins and each name goes out exactly once:
 
 ```python
 res.headers = 'X-Powered-By', 'Heaven'
 res.headers = 'Cache-Control', 'no-store'
+res.headers = 'cache-control', 'no-cache'    # replaces the line above
 ```
 
 `res.header(key, value)` does the same thing and is chainable.
 
-!!! warning "Headers are append-only"
-    There is no API to read, replace, or delete a header once set. Assigning `Content-Type` twice sends it twice. Set each header exactly once per request.
+The assignment understands three more shapes:
+
+```python
+res.headers = 'X-Powered-By', None           # removes the header
+res.headers = 'Vary', ['Origin', 'Accept']   # Vary: Origin, Accept
+res.cookie('session', token)                 # Set-Cookie accumulates, one line each
+```
+
+!!! note "Why replace instead of append"
+    HTTP allows a name to repeat on the wire only when its value is defined as a comma-separated list, which the list form above produces on a single line, and for `Set-Cookie`, which is why that one header accumulates. Sending a singleton like `Content-Type` twice is protocol-invalid and clients resolve the conflict unpredictably. Replacing also means built-ins that set their own headers, like `res.file()` setting `Content-Type`, override yours instead of sending both.
 
 ## Cookies
 

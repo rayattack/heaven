@@ -117,8 +117,29 @@ async def upload(req, res, ctx):
 
 `req.form` is `None` when the request has no form content type — check before using it.
 
-!!! danger "Uploads are held entirely in memory"
-    Heaven buffers the whole request body before your handler runs, and there is **no size limit**. A large upload is a memory spike, and a hostile one is a denial of service. Put a body-size cap in your reverse proxy (`client_max_body_size` in Nginx) before accepting uploads from the public.
+A `File` also carries `.content_type`, `.size`, `.save(path)` to copy it somewhere in chunks, and `.file`, a file object for handing to anything that reads files.
+
+!!! warning "On a buffered route, `req.form` holds the whole upload in memory"
+    Parsing a buffered form keeps the request body and the parsed parts side by side, so peak memory is a multiple of the upload size. That is fine for an avatar and wrong for a video.
+
+    Two things to reach for, covered in [Serving Files](files.md#receiving-uploads):
+
+    - **`App(max_body_size=...)`** caps what any buffered route will accept, answering `413` and stopping the read rather than accumulating the rest.
+    - **`stream=True`** on the route leaves the body unread. Consume it raw with `req.stream()`, or parse it incrementally with `await req.form`.
+
+On a route registered with `stream=True`, the form must be awaited, and large file parts spill to a temporary file on disk instead of accumulating in memory:
+
+```python
+app.POST('/upload', upload, stream=True)
+
+async def upload(req, res, ctx):
+    form = await req.form               # parses the body as it arrives
+
+    form.get('title')                   # fields work as usual
+    form.get('video').save(destination) # the file never sat in memory
+```
+
+Awaiting `req.form` on a buffered route is harmless, so the same handler body works on both kinds of route. Reading fields on a streaming route without awaiting first raises `RuntimeError`. The details (spill threshold, per-field ceilings, error draining) are in [Serving Files](files.md#parse-a-form-without-buffering-it).
 
 ## Metadata
 

@@ -136,7 +136,7 @@ Being explicit so you don't discover a gap in an incident review:
 - **No CSRF protection.** No token generation, no double-submit helper. If you serve HTML forms with cookie sessions, you need this — implement it as a `BEFORE` hook, or rely on `samesite` plus a custom-header check for JSON APIs.
 - **No auth utilities.** No JWT, OAuth2, API-key, or HTTP Basic helpers. Bring `pyjwt` or `authlib` and write a `BEFORE` hook.
 - **No rate limiting.**
-- **No request size limits.** The whole body is buffered in memory before your handler runs — cap it in your reverse proxy.
+- **No request size limit by default.** `max_body_size` is off unless you set it, and a buffered body is held in memory before your handler runs. Set `App(max_body_size=...)`, cap it in your proxy as well, and use `stream=True` for routes that legitimately accept large uploads. See [Serving Files](files.md#receiving-uploads).
 - **No security headers by default.** [Going to Production](production.md) has a copy-paste hook for these.
 - **No HTTPS redirect or trusted-host checks.** Handle both at the proxy.
 
