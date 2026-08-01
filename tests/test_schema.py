@@ -80,6 +80,67 @@ class SchemaTest(IsolatedAsyncioTestCase):
         start_msg = next(r for r in results if r['type'] == 'http.response.start')
         self.assertEqual(start_msg['status'], 422)
 
+    async def test_schema_dot_access(self):
+        captured = {}
+        async def handler(req, res, ctx):
+            captured['data'] = req.data
+            captured['name'] = req.data.name
+            res.body = dumps({"received": req.data.name})
+
+        self.app.POST("/users", handler)
+        self.app.schema.POST("/users", expects=User, dot=True)
+
+        scope = {
+            'type': 'http',
+            'method': 'POST',
+            'path': '/users',
+            'client': ('127.0.0.1', 8000),
+            'headers': [[b'content-type', b'application/json']]
+        }
+        body = dumps({"id": 1, "name": "Raymond"})
+
+        async def receive():
+            return {'type': 'http.request', 'body': body, 'more_body': False}
+        results = []
+        async def send(message):
+            results.append(message)
+
+        await self.app(scope, receive, send)
+
+        start_msg = next(r for r in results if r['type'] == 'http.response.start')
+        self.assertEqual(start_msg['status'], 200)
+        self.assertEqual(captured['name'], "Raymond")
+        self.assertEqual(captured['data']['id'], 1)
+
+    async def test_schema_default_is_plain_dict(self):
+        captured = {}
+        async def handler(req, res, ctx):
+            captured['data'] = req.data
+            res.body = b"ok"
+
+        self.app.POST("/users", handler)
+        self.app.schema.POST("/users", expects=User)
+
+        scope = {
+            'type': 'http',
+            'method': 'POST',
+            'path': '/users',
+            'client': ('127.0.0.1', 8000),
+            'headers': [[b'content-type', b'application/json']]
+        }
+        body = dumps({"id": 1, "name": "Raymond"})
+
+        async def receive():
+            return {'type': 'http.request', 'body': body, 'more_body': False}
+        results = []
+        async def send(message):
+            results.append(message)
+
+        await self.app(scope, receive, send)
+
+        with self.assertRaises(AttributeError):
+            _ = captured['data'].name
+
     async def test_openapi_generation(self):
         self.app.schema.POST("/users", expects=User, returns=User, summary="Create User")
         

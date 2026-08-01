@@ -78,9 +78,11 @@ class AsyncRouterTest(IsolatedAsyncioTestCase):
         router = Application()
         engine = router.subdomains.get(DEFAULT)
         router.GET('/v1/customers', lambda r,w,c: w.renders('index.html'))
-        with self.assertRaises(AttributeError):
-            # template needs to be activated before use
-            response = await engine.handle(self.scope, receiver, None, metadata)
+        # template needs to be activated before use — handle() catches the error
+        # and attaches it to the response instead of propagating
+        response = await engine.handle(self.scope, receiver, None, metadata)
+        self.assertEqual(response.status, 500)
+        self.assertIsInstance(getattr(response, '_unhandled_error', None), AttributeError)
         router.TEMPLATES('tests/templates', asynchronous=False)
         response = await engine.handle(self.scope, receiver, None, metadata, router)
         self.assertIsInstance(response, Response)
