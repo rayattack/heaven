@@ -5,7 +5,7 @@
 - **`constants.WILDCARD`** -> A `str` constant helpful to prevent you from typing `'*'` everywhere in your code.
 
 - **`context.keep(key: str, value: any)`** -> This is how values are kept/stored in the context API for use across http requests.
-    _see [decorator code snippet](examples.md#decorator-functions) for example on its usage_
+    _see [the authentication recipe](examples.md#authentication-with-a-before-hook) for example usage_
 
 - **`form.Form`** -> Tiny wrapper around a dict returned from `req.FORM` when **content-type** of request is of type `multitype/form-data` or
     `application/x-www-form-urlencoded`

@@ -1,122 +1,126 @@
-# The Earth 🌍
+# Min 23-24 — Testing with Earth 🌍
 
-Testing web apps usually involves spinning up a "test client", fiddling with ports, or mocking complex internal states. Heaven gives you `Earth`, a testing utility that lets you verify your world without leaving Python.
-
-## The Testing Philosophy
-
-Heaven tests are:
-
-1.  **In-Process**: No network overhead.
-2.  **Explicit**: You see exactly what `req`, `res`, and `ctx` look like.
-3.  **Flexible**: Test full lifecycles, atomic functions, or swapped configurations.
-
-## 1. Full Integration Tests
-
-Use the `test()` context manager to simulate a real server environment (including startup/shutdown hooks).
+Earth is Heaven's built-in test client. No ports, no sockets, no `httpx` — it drives your app in-process and hands you back the same three objects your handlers see.
 
 ```python
-# test_app.py
-from main import app
-
-async def test_create_user():
-    # track_session=True automatically handles Cookies across requests
-    async with app.earth.test(track_session=True) as earth:
-        # 1. Send Request
-        req, res, ctx = await earth.POST('/users', body={'name': 'Ray'})
-        
-        # 2. Assert Response
-        assert res.status == 201
-        assert res.json['name'] == 'Ray'
+req, res, ctx = await app.earth.GET('/users')
 ```
 
-## 2. Unit Testing Handlers
+That return shape is the point: you can assert on the **response** and also inspect the **context** your hooks built, which is normally invisible from outside.
 
-Sometimes you just want to test a single function without running the whole router logic.
+## Integration tests
+
+`app.earth.test()` is an async context manager that runs your startup hooks on entry and your shutdown hooks on exit.
 
 ```python
-from main import create_user_handler
+from unittest import IsolatedAsyncioTestCase
+from main import app
+
+class TestUsers(IsolatedAsyncioTestCase):
+    async def test_create_user(self):
+        async with app.earth.test() as earth:
+            req, res, ctx = await earth.POST('/users', body={'name': 'Ada'})
+
+            self.assertEqual(res.status, 201)
+            self.assertEqual(res.json['name'], 'Ada')
+```
+
+A `dict` or `list` body is JSON-encoded and given the right content type automatically. Cookies and sessions are tracked across requests within a block, so a login followed by a protected request works as it would in a browser.
+
+Available: `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, plus `upload()` and `SOCKET()`.
+
+!!! danger "Earth skips Heaven's final response step"
+    Earth calls the router directly rather than going through the full ASGI entry point, so a few things that happen in production **do not happen in tests**:
+
+    - a `dict`/`list` body is **not** serialized — `res.body` is still a `dict`, and `res.headers` has no `Content-Type`
+    - `res.defer()` callbacks never run
+    - the debug error page is never rendered
+
+    In practice: assert against `res.json` (which handles both) rather than `res.body`, and test deferred work by calling the callback directly.
+
+## Unit-testing a handler
+
+Skip routing entirely and build the three objects yourself:
+
+```python
+from main import create_user
 
 async def test_handler_logic():
-    # 1. Create fake components
-    req = app.earth.req(url='/', body={'name': 'Ray'})
+    req = app.earth.req(url='/users', body={'name': 'Ada'})
     res = app.earth.res()
     ctx = app.earth.ctx()
 
-    # 2. Call handler directly
-    await create_user_handler(req, res, ctx)
+    await create_user(req, res, ctx)
 
-    # 3. Verify
     assert res.status == 201
 ```
 
-## 3. Mocking, Swapping & Bypassing
+This is where the `(req, res, ctx)` signature pays off — a handler is a plain function, so calling it needs no framework machinery.
 
-You often need to mock databases, avoid rate limits, or swap authentication logic.
+## Replacing dependencies
 
-### Hook Swapping
-Swap out a startup hook (like `connect_db`) with a mock version.
+### Swap a lifecycle hook
+
+Point startup at a test database instead of the real one:
 
 ```python
-# The real startup hook
-async def connect_prod_db(app): ...
-
-# The test startup hook
-async def connect_test_db(app): ...
-
-# Swap them
 app.earth.swap(connect_prod_db, connect_test_db)
 ```
 
-### Middleware Bypassing
-Skip specific middleware (like Rate Limiters) that might interfere with tests.
+### Skip a hook
+
+Rate limiters and auth guards usually get in the way of tests:
 
 ```python
-# Don't run this middleware during tests
-app.earth.bypass(rate_limiter_hook)
+app.earth.bypass(rate_limiter)
 ```
 
-### Bucket Mocking
-If your app uses `app.peek('db')`, you can overwrite it for the test.
-
-!!! warning "Warning"
-    `app.keep` is persistent across tests! If you overwrite a global dependency, you must manually restore it, otherwise downstream tests will use your mock.
+### Mock app state
 
 ```python
 async with app.earth.test() as earth:
-    # 1. Backup original
-    original_db = app.unkeep('db')
-    
-    # 2. Overwrite with mock
+    original = app.unkeep('db')
     app.keep('db', MockDatabase())
-    
     try:
-        await earth.GET('/users')
+        req, res, ctx = await earth.GET('/users')
     finally:
-        # 3. Restore original for other tests
-        app.keep('db', original_db)
+        app.keep('db', original)      # always restore
 ```
 
-## 4. Subdomains, WebSockets & File Uploads
+!!! warning "`app.keep` outlives the test"
+    Application state is not reset between tests. Overwrite it without restoring and every later test in the process gets your mock. The `try/finally` above is not optional.
 
-Earth handles detailed scenarios easily.
+## Subdomains, sockets and uploads
 
 ```python
-# Test a subdomain
-await earth.GET('/admin', subdomain='admin')
+# a subdomain, with no DNS involved
+req, res, ctx = await earth.GET('/users', subdomain='api')
 
-# Test a WebSocket
+# a websocket
 ws = await earth.SOCKET('/chat').connect()
 await ws.send('hello')
 assert await ws.receive() == 'world'
 await ws.close()
 
-# Test File Uploads
-await earth.upload('/avatar', 
-    files={'file': ('image.png', b'data')},
-    data={'userid': '123'}
+# a multipart upload
+req, res, ctx = await earth.upload('/avatar',
+    files={'file': ('image.png', b'\x89PNG...')},
+    data={'userid': '123'},
 )
 ```
 
+## Running the suite
+
+Heaven's own tests use `unittest.IsolatedAsyncioTestCase` and run under pytest:
+
+<div class="termy">
+
+```console
+$ python -m pytest tests/ -v
+```
+
+</div>
+
 ---
 
-**Next:** Confident much? Let your app run in the background with **[Daemons](daemons.md)**.
+**Next:** Work that happens outside a request → **[Min 25-26 — Background Work](daemons.md)**

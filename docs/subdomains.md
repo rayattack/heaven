@@ -1,73 +1,130 @@
+# Min 07-08 — Subdomains & Mounting 🏗️
 
-# Subdomains
+Two ways to split a growing application: **subdomains** for routing by hostname, and **mounting** for combining separate app objects into one.
 
-Heaven makes it incredibly easy to build multi-tenant applications or segregate your API using subdomains.
-
-## Basics
-
-The `app.subdomain(name)` method returns a **proxy object** (a `SubdomainContext`) that allows you to register routes, hooks, and schemas specifically for that subdomain.
-
-```python
-# Create a proxy for the 'admin' subdomain
-admin = app.subdomain('admin')
-
-# Register a route
-admin.GET('/dashboard', admin_dashboard)
+```mermaid
+flowchart TD
+    subgraph one ["One Heaven process"]
+        direction TB
+        W["<b>www</b><br/>/, /pricing"]
+        A["<b>api</b><br/>/users, /orders"]
+        D["<b>admin</b><br/>/dashboard"]
+    end
+    R1(["example.com"]) --> W
+    R2(["api.example.com"]) --> A
+    R3(["admin.example.com"]) --> D
 ```
 
-Now, `http://admin.example.com/dashboard` will serve the dashboard, but `http://example.com/dashboard` will 404.
+## Subdomains
 
-## Consistency & Proxies
-
-It is important to understand that `app.subdomain('name')` returns a **new proxy object** each time, but they all point to the **same shared state** within the application.
-
-This means you can call `app.subdomain('api')` in multiple places (even different files), and they will all contribute to the same routing table.
+Every subdomain gets its own independent routing table. `app.subdomain(name)` returns a proxy for registering against it:
 
 ```python
-# In users.py
+api = app.subdomain('api')
+admin = app.subdomain('admin')
+
+api.GET('/users', list_users)          # api.example.com/users
+admin.GET('/dashboard', dashboard)     # admin.example.com/dashboard
+```
+
+Or pass `subdomain=` directly:
+
+```python
+app.GET('/users', list_users, subdomain='api')
+```
+
+Routes registered on `api` are **only** reachable through that hostname. `example.com/users` returns 404.
+
+### Proxies are cheap and repeatable
+
+`app.subdomain('api')` returns a fresh proxy each time, but they all write to the same routing table. Call it wherever you need it — no need to pass the object around:
+
+```python
+# users.py
 api = app.subdomain('api')
 api.GET('/users', list_users)
 
-# In posts.py
-api = app.subdomain('api') # This is safe!
-api.GET('/posts', list_posts)
+# orders.py
+api = app.subdomain('api')      # safe — same table
+api.GET('/orders', list_orders)
 ```
 
-Both `/users` and `/posts` are immediately registered to the `api` subdomain. There is no need to pass the `api` object around; you can just re-instantiate the proxy whenever you need it.
-
-## Subdomain Schemas
-
-You can also enforce schemas specifically for a subdomain. This is useful when your main site and your API have different validation rules or when you want formatted OpenAPI docs for your API subdomain.
-
-The `SubdomainContext` exposes a `.schema` property which, similarly, returns a consistent proxy to the registry.
+### Everything else is subdomain-aware
 
 ```python
-from heaven import Schema
-
-class CreateUser(Schema):
-    username: str
-
-api = app.subdomain('api')
-
-# Register schema-validated route on the API subdomain
-api.schema.POST('/users', expects=CreateUser)
-api.POST('/users', create_user_handler)
+api.BEFORE('/*', require_token)                  # hooks
+api.schema.POST('/users', expects=CreateUser)    # schemas
+api.doc('/docs', title='Public API')             # its own API reference
+api.cors(origin=['https://app.example.com'])     # its own CORS policy
 ```
 
-Just like the router itself, `api.schema` is safe to call multiple times.
+!!! note "Requests without a subdomain go to `www`"
+    Heaven treats a host as having a subdomain only when it has **more than two dot-separated parts**. So `example.com` and `localhost` both resolve to the default `www` table. Register a `*` subdomain to catch everything unmatched.
 
-## Hooks
+!!! tip "Testing subdomains locally"
+    `localhost` has no subdomain, so `api.localhost:8000` is the usual trick — it works in Chrome and Firefox without touching `/etc/hosts`. In tests, skip DNS entirely:
 
-You can also register middleware (hooks) that only run for a specific subdomain.
+    ```python
+    req, res, ctx = await earth.GET('/users', subdomain='api')
+    ```
+
+## Mounting
+
+Mounting merges one Heaven app into another. It's how you split a large codebase into modules that are each independently runnable and testable.
 
 ```python
-admin = app.subdomain('admin')
-
-async def require_admin(req, res, ctx):
-    if not user.is_staff:
-        res.status = 403
-        res.abort("Forbidden")
-
-# This hook ONLY runs for requests to admin.example.com
-admin.BEFORE('/*', require_admin)
+# api.py
+from heaven import Router
+api = Router()
+api.GET('/v1/customers', list_customers)
 ```
+
+```python
+# pages.py
+from heaven import Router
+pages = Router()
+pages.TEMPLATES('templates', relative_to=__file__)
+pages.GET('/', home)
+```
+
+```python
+# app.py
+from heaven import Application
+from api import api
+from pages import pages
+
+app = Application()
+app.mount(api)
+app.mount(pages, isolated=False)
+```
+
+`isolated=True` (the default) merges **routes only**. `isolated=False` also merges configuration, buckets, and template loaders, so the child can use resources the parent set up.
+
+### Hook order when mounted
+
+Hooks nest the way you'd hope — broad guards wrap specific ones:
+
+```
+parent BEFORE → child BEFORE → handler → child AFTER → parent AFTER
+```
+
+### What mounting will not do for you
+
+!!! warning "No path prefix"
+    Heaven has no `mount(child, prefix='/blog')`. Child routes mount at their **literal** paths, so a child's `/posts` is served at `/posts`, not `/blog/posts`. Include the prefix in the child's own route strings if you want one.
+
+!!! warning "Daemons are not carried over"
+    A mounted child's background daemons are silently dropped — they never start. Register daemons on the app you actually run.
+
+## Which one should you use?
+
+| Use | When |
+| :--- | :--- |
+| **Subdomains** | The split is a *hostname* concern: a public API, an admin panel, per-tenant hosts. |
+| **Mounting** | The split is a *code organisation* concern: keeping a large app in separate modules. |
+
+They compose — mount a child app and register its routes on a subdomain.
+
+---
+
+**Next:** Reading what the client actually sent → **[Min 09-10 — The Request](request.md)**

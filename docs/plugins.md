@@ -36,6 +36,9 @@ Looking for ready-made plugins? Check out the **[Plugin Marketplace](marketplace
 
 Here is a complete example of a PostgreSQL plugin that integrates seamless `msgspec` destructuring for high-performance data retrieval.
 
+!!! note "`msgspec` here is the plugin's own dependency"
+    Heaven itself validates with [pytastic](schema.md), not msgspec. This plugin simply chooses msgspec for fast row-to-object conversion — a plugin is free to bring whatever libraries it likes.
+
 ### The Plugin
 
 ```python
@@ -66,7 +69,7 @@ class PostgresPlugin:
             # This makes 'ctx.db' or 'ctx.pg' available
             ctx.keep(self.name, self)
 
-        app.BEFORE("/*", inject_db)
+        app.BEFORE("/*", inject_db)   # see the caveat below
 
     async def startup(self, app):
         self.pool = await asyncpg.create_pool(self.dsn)
@@ -122,3 +125,16 @@ async def get_users(req, res, ctx):
 
 app.GET("/users", get_users)
 ```
+
+!!! warning "Injecting via a `/*` hook has an ordering catch"
+    Heaven runs **exact-match hooks before wildcard hooks**, so a plugin that injects on `BEFORE('/*')` has not run yet when a route-specific `BEFORE('/users')` hook executes. That hook will see `ctx.db` as `None`.
+
+    If your plugin's resource is needed by other hooks, prefer reading it from app scope, which is populated at startup and always available:
+
+    ```python
+    def install(self, app):
+        app.ON('startup', self.startup)
+        app.keep(self.name, self)        # available everywhere, no hook ordering involved
+    ```
+
+    Handlers then use `req.app.peek('db')`. See [hook execution order](hooks.md#execution-order).

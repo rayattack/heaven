@@ -1,100 +1,144 @@
-# The Request 📨
+# Min 09-10 — The Request 📨
 
-You've built the airport (Router), but here comes the plane. The `Request` object contains everything the client sent you, pre-parsed and ready to fly.
-
-The signature of every handler in Heaven is:
+`req` is everything the client sent, already parsed. It is the **read** half of a handler.
 
 ```python
 async def handler(req, res, ctx):
     ...
 ```
 
-Let's dissect `req`.
+## Where the data lives
 
-## The Basics
+| You want | Read it from | Type |
+| :--- | :--- | :--- |
+| `/users/42` → `42` | `req.params.get('id')` | str, or int with `:int` |
+| `?page=3` | `req.queries.get('page')` | str, or coerced |
+| A JSON body | `req.json` | dict / list |
+| A **validated** body | `req.data` | dict (see [Schemas](schema.md)) |
+| A form or upload | `req.form.get('field')` | str or `File` |
+| Raw bytes | `req.body` | bytes |
+| Headers | `req.headers.get('authorization')` | str |
+| Cookies | `req.cookies.get('session')` | str |
 
-- **`req.body`**: (bytes) The raw body.
-- **`req.method`**: (str) `GET`, `POST`, etc.
-- **`req.url`**: (str) The full path (e.g., `/users/1?active=true`).
-- **`req.route`**: (str) The matched app route (e.g., `/users/:id`).
-
-## Data Access
-
-### URL Parameters (`req.params`)
-When you define a route like `/users/:id:int`, Heaven parses it automatically.
-
-```python
-# Route: app.GET('/users/:id:int')
-# URL: /users/42
-id = req.params.get('id')
-assert isinstance(id, int)
-```
-
-!!! note "Note"
-    Supported types: `:int`, `:float`, `:bool`, `:uuid`, `:date`, `:datetime`, `:str` (default).
-
-### Query Strings (`req.queries`)
-Query parameters can also be typed in the route definition!
+## Path parameters
 
 ```python
-# Route: app.GET('/search?limit:int&sort:str')
-# URL: /search?limit=10&sort=asc
+app.GET('/users/:id/orders/:order_id', handler)
 
-limit = req.queries.get('limit') # 10 (int)
-sort = req.queries.get('sort') # 'asc' (str)
+async def handler(req, res, ctx):
+    req.params.get('id')        # '42'
+    req.params.get('order_id')  # '7'
 ```
 
-### JSON Bodies (`req.data`)
-If you use Heaven's Schema feature, [Minute 19: Schema & Docs](schema.md), Heaven auto-validates the body and puts the result here.
+Add `:int` to get an integer instead of a string:
 
 ```python
-# Route registered with `expects=UserSchema`
-user = req.data
-print(user.name)
+app.GET('/users/:id:int', handler)   # req.params.get('id') -> 42
 ```
 
-### Type-Safe `req.data` with Generics
+!!! warning "`:int` is the only path cast that works"
+    `/report/:day:date` and `/item/:sku:uuid` are accepted without complaint but still hand you a **string**. Only `:int` (and the no-op `:str`) actually convert. Query strings are different — they support the full type set.
 
-`Request` is a generic class (`Request[T]`), so you can annotate your handler to get full IDE autocomplete and type checking on `req.data`:
+## Query strings
+
+Read them straight off `req.queries`:
+
+```python
+# GET /search?q=heaven&page=3
+req.queries.get('q')      # 'heaven'
+req.queries.get('page')   # '3'  -> a string, by default
+```
+
+Declare types in the route to have them coerced:
+
+```python
+app.GET('/search?page:int&since:date&exact:bool', search)
+
+req.queries.get('page')    # 3                 int
+req.queries.get('since')   # date(2026, 1, 1)  date
+req.queries.get('exact')   # True              bool
+```
+
+Supported: `:int`, `:float`, `:bool`, `:str`, `:date`, `:datetime`, `:uuid`.
+
+!!! note "Bad input does not raise"
+    `?page=banana` gives you the string `'banana'`, not a 422. Check anything you rely on.
+
+## JSON bodies
+
+`req.json` decodes the raw body with `orjson` every time you touch it:
+
+```python
+async def create(req, res, ctx):
+    payload = req.json          # {'name': 'Ada'}
+```
+
+`req.data` is the better habit. With a schema registered it holds the **validated** body; without one it falls back to `req.json`.
+
+```python
+app.schema.POST('/users', expects=User)
+
+async def create(req, res, ctx):
+    user = req.data             # guaranteed to satisfy User
+    res.body = {'name': user['name']}
+```
+
+### Type-safe `req.data`
+
+`Request` is generic — annotate it and your editor autocompletes the payload:
 
 ```python
 from heaven import Request, Response, Context
 
-class User(Schema):
-    name: str
-    email: str
-
 async def create_user(req: Request[User], res: Response, ctx: Context):
-    user = req.data  # IDE knows this is User
-    print(user.name) # autocomplete works here
+    user = req.data      # your IDE knows the shape
 ```
 
-This pairs with your schema registration — the generic parameter should match the `expects` schema:
+This is a convention for your type checker; the runtime doesn't verify the annotation matches what you registered.
+
+## Forms and uploads
+
+`req.form` parses `application/x-www-form-urlencoded` and `multipart/form-data`.
 
 ```python
-app.schema.POST('/users', expects=User)
-app.POST('/users', create_user)
+async def upload(req, res, ctx):
+    form = req.form
+
+    username = form.get('username')     # str
+    avatar   = form.get('avatar')       # a File object
+
+    avatar.filename                     # 'photo.png'
+    avatar.content                      # bytes
 ```
 
-### Forms (`req.form`)
-Access `application/x-www-form-urlencoded` or `multipart/form-data` uploads.
+`req.form` is `None` when the request has no form content type — check before using it.
 
-```python
-form = req.form
-username = form.get('username')
-password = form.get('password')
-file = form.get('avatar') # For file uploads
-```
-
-
+!!! danger "Uploads are held entirely in memory"
+    Heaven buffers the whole request body before your handler runs, and there is **no size limit**. A large upload is a memory spike, and a hostile one is a denial of service. Put a body-size cap in your reverse proxy (`client_max_body_size` in Nginx) before accepting uploads from the public.
 
 ## Metadata
 
-- **`req.headers`**: (dict) Lowercase header dictionary.
-- **`req.cookies`**: (dict) Client cookies.
-- **`req.ip`**: (Lookup) `req.ip.address` and `req.ip.port`.
-- **`req.subdomain`**: (str) The subdomain (e.g., `'api'` or `'www'`).
+```python
+req.method        # 'POST'
+req.url           # '/users/1?active=true'
+req.route         # '/users/:id'      — the pattern that matched
+req.subdomain     # 'api'
+req.host          # 'api.example.com'
+req.scheme        # 'http'
+req.ip.address    # '203.0.113.9'
+req.ip.port       # 54123
+req.app           # the Router — use req.app.peek('db')
+```
+
+!!! tip "`req.app` is how you reach shared resources"
+    Anything you stored at startup with `app.keep()` is one hop away:
+
+    ```python
+    async def list_users(req, res, ctx):
+        db = req.app.peek('db')
+        res.body = await db.fetch('SELECT * FROM users')
+    ```
 
 ---
 
-**Next:** You've heard them. Now answer them. On to **[The Response](response.md)**.
+**Next:** You've heard them. Now answer → **[Min 11-12 — The Response](response.md)**

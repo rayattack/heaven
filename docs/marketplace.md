@@ -8,7 +8,7 @@ You can simply copy and paste these into your project (e.g., in a `plugins.py` f
 
 !!! note "Note"
     **CORS** and **Sessions** are now native core features!
-    Check out [The Router](router.md#core-features-cors--sessions) documentation for details.
+    Check out [The Router](router.md#cors) documentation for details.
 
 ### Heaven Plugins
 | Plugin | Pypi | Description | Source Code |

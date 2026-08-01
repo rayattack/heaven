@@ -1,215 +1,239 @@
-# Schema & API Docs
+# Min 19-20 — Schemas & Validation 🛡️
 
-Heaven doesn't just run your code; it understands it. By using schemas, you get instant validation, auto-generated documentation, and type safety, all powered by the incredibly fast `msgspec`.
+Heaven validates request bodies with [pytastic](https://rayattack.github.io/pytastic/) — a zero-dependency validator built on **standard Python typing**. There is no new base class to learn and no model DSL. If you know `TypedDict` and `Annotated`, you already know how to write a Heaven schema.
 
-## Defining Schemas
-
-A schema is a class that describes your data structure. Heaven exports `Schema` (a wrapper around `msgspec.Struct`) and `Constraints` (a wrapper around `msgspec.Meta`) to help you define validation rules.
+## A schema is a TypedDict
 
 ```python
-from typing import Annotated
-from heaven import Schema, Field
+from typing import Annotated, List, Literal, TypedDict
 
-class User(Schema):
-    id: int
+class Customer(TypedDict):
+    name:  Annotated[str, "min_len=2; max_len=80"]
+    email: Annotated[str, "format=email"]
+    age:   Annotated[int, "min=18; max=120"]
+    tier:  Literal["free", "pro", "enterprise"]
+    tags:  Annotated[List[str], "max_items=5"]
+```
+
+Constraints are a **string** in the `Annotated` metadata: `key=value`, separated by `;`. A field with no constraints needs no annotation at all — `name: str` is a perfectly good schema field.
+
+!!! tip "Why strings and not a `Field()` object?"
+    Because `TypedDict` stays a plain type. Your IDE autocompletes it, `mypy` checks it, and any other tool that understands typing understands your schema. Nothing is imported from Heaven to define one.
+
+### Optional fields
+
+Use `NotRequired` to make a key optional:
+
+```python
+from typing import NotRequired, Optional   # typing_extensions on Python < 3.11
+
+class Customer(TypedDict):
     name: str
-    
-    # 1. Bounds (Values vs Lengths)
-    # Use 'min'/'max' for numeric values (>=, <=)
-    age: Annotated[int, Field(min=18, max=100, desc="Must be legal age")]
-    
-    # Use 'min_len'/'max_len' for sequence lengths
-    tags: Annotated[list[str], Field(min_len=1, desc="At least one tag required")]
-    
-    # 2. Formats
-    # Built-in support for 'email', 'uuid', and 'slug'
-    email: Annotated[str, Field(format="email", example="ray@heaven.com")]
-    apikey: Annotated[str, Field(format="uuid", error_hint="Invalid API Key format")]
-    slug: Annotated[str, Field(format="slug")]
-
-    # 3. Steps (Multiples)
-    duration: Annotated[int, Field(step=15)]
-    
-    # 4. Defaults (via msgspec.field)
-    is_active: bool = True
-    metadata: dict = Schema.Field(default_factory=dict)
+    referrer: NotRequired[Optional[str]]    # may be absent, may be null
 ```
 
-## The `Field` Helper
+### Nesting
 
-Heaven provides a smart `Field()` helper that simplifies validation. It returns `msgspec.Meta` constraints configured for your needs.
-
-| Argument | Maps To (msgspec) | Description |
-| :--- | :--- | :--- |
-| `min` / `max` | `ge` / `le` | Numeric constraints (>=, <=) |
-| `min_len` / `max_len` | `min_length` / `max_length` | Sequence length constraints |
-| `step` | `multiple_of` | Number must be a multiple of X |
-| `format` | `pattern` | Presets: `"email"`, `"uuid"`, `"slug"` |
-| `desc` | `description` | Field description for OpenAPI |
-| `example` | `extra_json_schema` | Example value for docs |
-| `error_hint`| `extra_json_schema` | Custom error message hint |
-
-## Advanced Patterns
-
-Heaven's `Field` helper is designed to scale with your needs. It seamlessly integrates with `msgspec`'s advanced features.
-
-### 1. Nested Arrays & Matrices
-
-You can apply constraints to the list itself AND the items within it.
+Nest schemas by referencing them. Errors report the full path, so `.address.zip` tells you exactly where the problem is.
 
 ```python
-class BatchUpload(Schema):
-    # The LIST must have 1-100 items.
-    # Each ITEM must be a string of length 3-50.
-    tags: Annotated[
-        list[Annotated[str, Field(min_len=3, max_len=50)]], 
-        Field(min_len=1, max_len=100)
-    ]
+class Address(TypedDict):
+    city: Annotated[str, "min_len=2"]
+    zip:  Annotated[str, "regex=^[0-9]{5}$"]
+
+class Customer(TypedDict):
+    name: str
+    address: Address              # nested
+    history: List[Address]        # list of nested
 ```
 
-### 2. Complex Unions (Polymorphism)
+### The constraint cheat sheet
 
-Validate data that can be one of multiple types, each with its own rules.
+| Applies to | Constraints |
+| :--- | :--- |
+| Numbers | `min`, `max`, `exclusive_min`, `exclusive_max`, `step` (alias `multiple_of`) |
+| Strings | `min_len`, `max_len` (aliases `min_length`/`max_length`), `regex` (alias `pattern`), `format` |
+| Lists | `min_items`, `max_items`, `unique` |
+| Objects | `min_props`, `max_props`, `strict` (reject unknown keys) |
+| Any | `title`, `description`, `default` |
+
+Built-in `format` values: `email`, `uuid`, `ipv4`, `uri`, `date-time`.
 
 ```python
-class SearchQuery(Schema):
-    # ID can be a positive Integer OR a UUID String
-    id: Annotated[int, Field(min=1)] | Annotated[str, Field(format="uuid")]
+class Event(TypedDict):
+    id:       Annotated[str, "format=uuid"]
+    host:     Annotated[str, "format=ipv4"]
+    website:  Annotated[str, "format=uri"]
+    starts:   Annotated[str, "format=date-time"]
+    capacity: Annotated[int, "min=1; max=500; step=5"]
+    slug:     Annotated[str, "regex=^[a-z0-9-]+$; description=URL-safe name"]
 ```
 
-### 3. Timezones & Dates
+## Wiring a schema to a route — the sidecar
 
-Native `msgspec` constraints (like `tz`) pass straight through `Field`.
+Heaven keeps schema registration **separate** from handler registration. You declare the contract on `app.schema`, and the handler on `app`.
 
 ```python
-from datetime import datetime
+# 1. Declare the contract
+app.schema.POST('/customers', expects=Customer, returns=Customer)
 
-class Event(Schema):
-    # Enforce timezone-aware datetimes (rejects naive inputs)
-    start_time: Annotated[datetime, Field(tz=True)]
+# 2. Register the handler — an ordinary function, no decorators
+app.POST('/customers', create_customer)
 ```
 
-### 4. The Escape Hatch (Raw Access)
+```mermaid
+flowchart LR
+    S["<b>app.schema.POST</b><br/>expects=Customer<br/>returns=Customer"]
+    S --> V["✅ Runtime validation<br/><small>422 on bad input</small>"]
+    S --> D["📘 OpenAPI docs<br/><small>/docs</small>"]
+    H["<b>app.POST</b><br/>create_customer"] --> R["handler stays a plain<br/>(req, res, ctx) function"]
+```
 
-If you strictly prefer raw `msgspec`, you can bypass `Field` entirely.
+**One registration, two jobs.** The same declaration drives runtime validation *and* the generated documentation, so they can never drift apart.
+
+### Why a sidecar instead of decorators?
+
+1. **Handlers stay pure.** No framework types in the signature, no decorator stack to read through, trivially unit-testable by calling the function.
+2. **Schemas are relocatable.** Registration is just a method call, so you can keep contracts in their own module, register them conditionally, or build them in a loop.
+3. **Subdomains come free.** `api.schema.POST(...)` works identically.
+
+The trade-off is honest: the two calls are **not linked at the type level**. Keeping the route string in sync between them is on you, and so is keeping the handler's annotation in sync with `expects`.
+
+## Reading validated data
+
+Validated input lands on `req.data` as a **dict**:
 
 ```python
-from heaven import Constraints
-
-class RawMetal(Schema):
-    # Pure msgspec code works 100% of the time
-    data: Annotated[bytes, Constraints(min_length=10)]
+async def create_customer(req, res, ctx):
+    customer = req.data
+    res.status = 201
+    res.body = {'id': 1, 'name': customer['name']}
 ```
 
-## The Schema Registry
-
-Instead of cluttering your handlers with decorators, Heaven uses a "Sidecar" pattern. You register schemas on the router's `schema` property.
-
-### Why a Sidecar?
-
-Most frameworks tie schemas to handlers via decorators or function signatures. Heaven keeps them separate on purpose:
-
-1. **One registration, two jobs.** The `expects` and `returns` schemas drive both runtime validation *and* OpenAPI doc generation. The schema registry is the single source of truth for both — no decorator introspection or annotation parsing needed.
-2. **Handlers stay pure.** Your handler is just a function that receives `(req, res, ctx)`. No framework magic in the signature, no hidden dependency injection, no decorator stack to read through.
-3. **Schemas are relocatable.** Because registration is just a method call on the router, you can organize schemas in a separate file, register them conditionally, or build them dynamically — without touching your handlers.
-4. **Subdomain-aware by default.** The same sidecar pattern works identically on subdomains (`api.schema.POST(...)`) with no additional wiring.
-
-**The trade-off**
-
-At runtime, Heaven correctly populates `req.data` with the validated schema object — it knows exactly what it is. But because the handler is a standalone function, your IDE and type checker don't.
-
-To bridge this gap, annotate `Request[YourSchema]` in the handler signature to tell the IDE what the runtime already knows.
-
-The two registrations aren't linked at the type level — keeping them in sync is on you.
+Prefer attribute access? Register with `dot=True`:
 
 ```python
-# 0. You can mount schemas on subdomains e.g.
-api = app.subdomain('api')
-api.schema.POST(...)
+app.schema.POST('/customers', expects=Customer, dot=True)
 
-# 1. Or on the default subdomain i.e. `www`
-app.schema.POST('/users', 
-    expects=User, 
-    returns=User, 
-    title="Create User",
-    summary="Creates a new user in the system"
-)
-
-# 2. Then in your route handler(s)
-async def create_user(req, res, ctx):
-    # Validated 'User' object injected into `data` by heaven
-    user = req.data
-
-    # maybe some database logic?...
-
-    # Heaven auto-converts this back to JSON
-    res.body = user
-    
-# 3. Look ma, no decorators!
-app.POST('/users', create_user)
+async def create_customer(req, res, ctx):
+    res.body = {'name': req.data.name}      # dot access
 ```
 
-## Validation
+### Type-safe handlers
 
-When you register an `expects` schema, Heaven automatically:
-
-1.  **Validates** the incoming JSON body against the schema.
-2.  **Aborts** with `422 Unprocessable Entity` if it's invalid (with a nice error message).
-3.  **Populates** `req.data` with the validated object.
-
-### Type-Safe Handlers
-
-`Request` is generic — annotate it with your schema to get full IDE autocomplete on `req.data`:
+`Request` is generic. Annotate it and your IDE will autocomplete `req.data`:
 
 ```python
 from heaven import Request, Response, Context
 
-async def create_user(req: Request[User], res: Response, ctx: Context):
-    user = req.data  # IDE knows this is User
-    print(user.name) # autocomplete works
+async def create_customer(req: Request[Customer], res: Response, ctx: Context):
+    customer = req.data      # IDE knows the shape
 ```
 
-The generic parameter should match the `expects` schema you registered. This is a convention — Heaven doesn't enforce the match at runtime, but your type checker will.
+!!! note "A convention, not an enforcement"
+    Heaven does not check that `Request[Customer]` matches the `expects=Customer` you registered. Your type checker helps; the runtime does not care.
 
-## Auto-Generated Docs (OpenAPI)
+## What happens when validation fails
 
-Heaven can generate a stunning interactive API reference website for you.
-
-```python
-# Mount the docs at /docs
-app.DOCS('/docs', title="My API", version="1.0.0")
+```mermaid
+flowchart TD
+    A["POST /customers"] --> B{"Body valid?"}
+    B -->|"yes"| C["req.data populated"] --> D["your handler runs"]
+    B -->|"no"| E["422 Unprocessable Entity"]
+    E --> F["request aborted —<br/>handler and AFTER hooks skipped"]
 ```
 
-Now visit `http://localhost:8000/docs` in your browser. You will see a beautiful Scalar UI where you can test your endpoints.
+The response is **plain text**, naming the first field that failed:
 
-### Advanced: Subdomains
-
-You can mount docs on a specific subdomain.
-
-```python
-app.DOCS('/docs', subdomain='api')
+```
+Value 12 < 18.0 at .age
+  - .age: Must be >= 18.0
 ```
 
-### Advanced: Output Protection
+!!! warning "Three things to know about the 422"
+    - **It is plain text, not JSON.** If your clients expect a JSON error envelope, you must shape it yourself.
+    - **Only the first error is reported.** pytastic stops at the first failure rather than collecting all of them.
+    - **A 422 aborts the request**, so *no* `AFTER` hooks run. That includes session saving — anything you rely on in an AFTER hook silently will not happen on a validation failure.
 
-**You can also control how strict Heaven is about what you send back.**
+!!! danger "Validation assumes a JSON body"
+    The validating hook reads `req.json` regardless of `Content-Type`. Posting a form body to a schema'd route raises a JSON decode error that surfaces as an opaque **500**, not a 415 or 422. Keep schema'd routes JSON-only.
+
+## Validating the response
+
+`returns=` validates what you send back, which is how you stop internal fields leaking out.
 
 ```python
-app.schema.GET('/users/:id', 
-    returns=User,
-    protect=True,  # Strip fields not in User schema
-    strict=True    # Error 500 if a required field is missing
+class PublicProfile(TypedDict):
+    id: int
+    name: str
+
+app.schema.GET('/me', returns=PublicProfile, protect=True)
+
+async def me(req, res, ctx):
+    res.body = {'id': 7, 'name': 'Ada', 'password_hash': '$2b$deadbeef'}
+```
+
+The client receives `{"id":7,"name":"Ada"}` — `password_hash` is stripped because it isn't in the schema.
+
+| Option | Effect |
+| :--- | :--- |
+| `protect=True` | Strip any field not declared in the schema. **Your leak protection.** |
+| `partial=True` | Allow a subset of fields — useful for `PATCH` responses. |
+| `strict=True` | Return 500 if the response doesn't satisfy the schema, instead of sending it anyway. |
+
+These default to the app-wide settings you pass to `App(protect_output=..., allow_partials=..., fail_on_output=...)`.
+
+### PATCH is partial automatically
+
+Register `PATCH` and Heaven validates only the fields that were actually sent, so a client can update one field without resending the whole object.
+
+```python
+app.schema.PATCH('/customers/:id', expects=Customer)
+# PATCH {"age": 41}  ->  valid; req.data == {'age': 41}
+```
+
+## What schemas do *not* cover
+
+Worth stating plainly, because it differs from FastAPI:
+
+- **Only the JSON body is validated.** Path params, query params, headers, cookies and form bodies are never checked against a schema. Path and query params get [lightweight coercion](router.md#typed-query-strings) instead.
+- **There is no automatic 422 for a malformed query string.** `?page=banana` yields the string `'banana'`.
+
+## Putting it together
+
+```python
+from typing import Annotated, List, Literal, TypedDict
+from heaven import App, Request, Response, Context
+
+app = App()
+
+class Customer(TypedDict):
+    name:  Annotated[str, "min_len=2; max_len=80"]
+    email: Annotated[str, "format=email"]
+    age:   Annotated[int, "min=18"]
+    tier:  Literal["free", "pro", "enterprise"]
+
+class CustomerOut(TypedDict):
+    id: int
+    name: str
+    tier: str
+
+async def create_customer(req: Request[Customer], res: Response, ctx: Context):
+    db = req.app.peek('db')
+    row = await db.insert(req.data)
+    res.status = 201
+    res.body = row                      # validated + stripped by returns=
+
+app.schema.POST('/customers',
+    expects=Customer,
+    returns=CustomerOut,
+    protect=True,
+    summary="Create a customer",
+    group="Customers",
 )
+app.POST('/customers', create_customer)
 ```
 
-- **`protect=True`**: Prevents data leaks. If your DB returns `password_hash` but your Schema doesn't have it, it won't be sent.
-- **`partial=True`**: Allows sending only a subset of fields (good for PATCH updates).
-
 ---
 
-!!! note "Pro Tip: Performance"
-    Heaven's `Schema` is powered by **msgspec**, widely considered the fastest JSON library for Python. While standard features cover 99% of cases, you can leverage the full power of `msgspec` directly if you need e.g. zero-copy decoding or Struct caching.
-
----
-
-**Next:** Yay!!! You know json kung fu. But how well? On to **[API Docs](openapi.md)**.
+**Next:** That contract you just wrote can document itself → **[Min 21-22 — API Docs](openapi.md)**

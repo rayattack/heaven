@@ -1,49 +1,26 @@
 # Mounting Routers
 
-Heaven allows for applications to be mounted on top of each other. See example below
+!!! note "This page has moved"
+    Mounting is now covered alongside subdomains in **[Min 07-08 — Subdomains & Mounting](subdomains.md#mounting)**, which also documents hook ordering across mounts and the two limitations to know about (no path prefix, and daemons are not carried over).
 
-<hr />
+## The short version
 
-First let's create our backend api as a heaven application/router in a file called:
-
-`api.py`
-```py
+```python
+# api.py
 from heaven import Router
-
 api = Router()
-api.GET('/v1/customers', lambda req, res, ctx:...)
+api.GET('/v1/customers', list_customers)
 ```
 
-<hr />
-
-Next we create our frontend renderer as another heaven application/router:
-
-`pages.py`
-```py
-from heaven import Router
-
-pages = Router()
-
-# folder where your templates are stored
-pages.TEMPLATES('templates', asynchronous=False)
-pages.ASSETS('assets')
-
-
-pages.GET('/', lambda req, res, ctx: res.renders('index.html'))
-```
-
-<hr />
-
-Finally we create our main heaven application that will configure database connections and mount
-the `backend app` and `frontend app` on itself as mounted children:
-
-`app.py`
-```py
+```python
+# app.py
 from heaven import Application
+from api import api
 
 app = Application()
-
-app.mount(api, isolated=True)
-app.mount(pages, isolated=False)
+app.mount(api)
 ```
-**isolation=False** means no middlewares, config, or state is shared between router instances - only routes will be mounted.
+
+`isolated=True` (the default) merges **routes only**. `isolated=False` also merges configuration, buckets, and template loaders.
+
+[Read the full chapter →](subdomains.md#mounting)

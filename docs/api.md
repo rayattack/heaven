@@ -6,15 +6,20 @@
 The core application class that manages routing, configuration, and lifecycle.
 
 ```python
-class Router(configurator=None, protect_output=True, allow_partials=False, fail_on_output=True, debug=True)
+class Router(configurator=None, protect_output=True, allow_partials=False,
+             fail_on_output=True, debug=True, monitor=None)
 ```
 
 **Parameters:**
-- `configurator` (Callable | dict, optional): Configuration source.
-- `protect_output` (bool): Enable automatic schema validation for responses. Default `True`.
-- `allow_partials` (bool): Allow partial schema validation (non-strict). Default `False`.
-- `fail_on_output` (bool): Raise 500 error on validation failure instead of warning. Default `True` (Note: Implementation defaults to True, docstring might say otherwise).
-- `debug` (bool): Enable debug mode. Default `True`.
+- `configurator` (Callable | dict, optional): Configuration source, read back via `app.CONFIG(key)`.
+- `protect_output` (bool): Strip undeclared fields from responses validated by a `returns` schema. Default `True`.
+- `allow_partials` (bool): Allow partial response payloads. Default `False`.
+- `fail_on_output` (bool): Return 500 when a response fails its `returns` schema, instead of sending it anyway. Default `True`.
+- `debug` (bool): Serve the Guardian Angel error page on unhandled exceptions. Default `True`.
+- `monitor` (float, optional): Warn when the event loop is blocked for longer than this many seconds. Off by default.
+
+!!! danger "`debug=True` is the default"
+    The debug error page includes the exception message and full traceback. Pass `debug=False` in production — see [Security](security.md#turn-off-debug-in-production).
 
 **Properties:**
 - `daemons`: (write-only) Register a background task.
@@ -25,29 +30,29 @@ class Router(configurator=None, protect_output=True, allow_partials=False, fail_
 **Methods:**
 - `abettor(method, route, handler, subdomain=DEFAULT, router=None)`: Internal method for registering routes.
 - `call(handler, *args, **kwargs)`: Execute a handler string (dot-notation) with the app as context.
-- `cors(origins="*", methods="*", headers="*", expose_headers="*", max_age=None, allow_credentials=False)`: Enable CORS middleware.
+- `cors(handler=None, subdomains=None, **kwargs)`: Enable CORS. Recognised keys — `origin`/`origins`, `methods`, `headers`, `expose`, `credentials`, `max_age` (casing and separators are normalised). Defaults to fully permissive.
 - `keep(key, value)`: Store value in application scope.
-- `listen(host='localhost', port='8701', debug=True, **kwargs)`: Start the server using Uvicorn.
+- `listen(host='localhost', port='8701', debug=True, **kwargs)`: Start the server using Uvicorn. **Broken on uvicorn ≥ 0.15** — it forwards a removed `debug` argument and raises `TypeError`. Use the `heaven run` CLI instead.
 - `mount(router, isolated=True)`: Mount another `Router` instance. `isolated` determines if configs/buckets are merged.
 - `peek(key)`: Retrieve value from application scope.
 - `plugin(plugin_instance)`: Register a plugin (must have `install(app)` method).
-- `sessions(secret_key, cookie_name="session", max_age=3600)`: Enable secure cookie sessions.
+- `sessions(secret_key, cookie_name="session", max_age=3600, subdomains=None, **cookie_opts)`: Enable signed cookie sessions. Extra keyword arguments are passed through to the cookie (`secure`, `samesite`, `domain`, `path`, …).
 - `subdomain(subdomain)`: Initialize a new subdomain route engine.
 - `unkeep(key)`: Remove and return value from application scope.
 - `websocket()`: Enable WebSocket support (flag).
 
 **Routing Shortcuts:**
-- `GET(url, handler)`
-- `POST(url, handler)`
-- `PUT(url, handler)`
-- `DELETE(url, handler)`
-- `PATCH(url, handler)`
-- `HEAD(url, handler)`
-- `OPTIONS(url, handler)`
-- `CONNECT(url, handler)`
-- `TRACE(url, handler)`
-- `SOCKET(url, handler)`: Register WebSocket handler.
-- `HTTP(url, handler)`: Register handler for all HTTP methods.
+
+All take `(route, handler, subdomain='www')`.
+
+- `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`, `CONNECT`, `TRACE`
+- `SOCKET(url, handler)` — WebSocket handler. Aliases: `WS`, `WEBSOCKET`.
+- `HTTP(url, handler)` — registers the handler for `CONNECT`, `DELETE`, `GET`, `OPTIONS`, `PATCH`, `POST`, `PUT` and `TRACE`.
+
+!!! warning "There is no `HEAD()` method"
+    `HEAD` is not registrable through any shortcut and `HTTP()` skips it, so a `HEAD` request to a `GET` route returns 404. The only way to serve one is the low-level `app.abettor('HEAD', route, handler)`.
+
+    Relatedly: a method mismatch returns **404, not 405**, and `OPTIONS` is only answered if you call `app.cors()`.
 
 **Hooks:**
 - `BEFORE(url, handler)`: Pre-request middleware.
@@ -244,15 +249,24 @@ Wrapper class enabling dot-notation access for dictionaries (used for `ctx.sessi
 
 ## `heaven.schema`
 
-### `Schema`
-Base class for data models. Inherits `msgspec.Struct`.
+Heaven validates with [pytastic](https://rayattack.github.io/pytastic/). There is **no `Schema` base class** — a schema is a plain `TypedDict` with `Annotated` constraint strings. See [Schemas & Validation](schema.md).
 
 ```python
-class Schema(msgspec.Struct)
+from typing import Annotated, TypedDict
+
+class User(TypedDict):
+    name: Annotated[str, "min_len=2"]
+    age:  Annotated[int, "min=18"]
 ```
 
-### `Constraints` (alias `msgspec.Meta`)
-Used for field constraints.
+**Re-exported from `heaven`:**
+
+- `Pytastic`: the validator engine. Heaven keeps one instance per `Router`.
+- `ValidationError`: raised on invalid data; caught internally and turned into a 422.
+- `PytasticError`: base class for pytastic errors.
+
+!!! warning "`Schema`, `Field` and `Constraints` do not exist"
+    Earlier documentation described a msgspec-based `Schema` class with a `Field()` helper. That API was never part of this release — `from heaven import Schema` raises `ImportError`. Use `TypedDict` + `Annotated`.
 
 ---
 

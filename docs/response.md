@@ -1,143 +1,175 @@
-# The Response 🗣️
+# Min 11-12 — The Response 🗣️
 
-You have listened. Now you must speak. The `Response` object gives you the tools to reply with JSON, HTML, Files, or even silence.
+`res` is what you're sending back. It is the **write** half of a handler.
 
-The handler signature:
+!!! warning "You write to `res`. You never `return`."
+    Heaven discards your handler's return value. This is the one habit to unlearn coming from FastAPI or Flask.
+
+    ```python
+    async def handler(req, res, ctx):
+        return {'a': 1}        # ❌ silently ignored
+        res.body = {'a': 1}    # ✅
+    ```
+
+## The basics
 
 ```python
-async def handler(req, res, ctx):
-    ...
+res.status = 201
+res.body = {'id': 1, 'name': 'Ada'}
 ```
 
-## The Basics
+`res.body` accepts several types and does the right thing with each:
 
-- **`res.status`**: (int) The HTTP status code. Defaults to `200`.
-- **`res.body`**: (bytes|str|dict|list) The content.
+| You assign | Heaven sends |
+| :--- | :--- |
+| `dict` or `list` | JSON via `orjson`, with `Content-Type: application/json` set for you |
+| `str` | the text, UTF-8 encoded |
+| `bytes` | exactly those bytes |
+| `int` / `float` | its string form |
+| an async generator | a streamed response |
 
-Wait, `dict`? Yes. If you register a schema, Heaven handles the encoding. If not, it assumes bytes/str.
+### Status codes by name
 
-```python
-res.body = "Hello World" # Text
-res.body = b"Hello World" # Bytes
-```
-
-### `res.http`
-
-Instead of importing `HTTPStatus` from the standard library, you can use the built-in proxy:
+`res.http` is the standard library's `HTTPStatus`, already imported:
 
 ```python
-# No need for: from http import HTTPStatus
-res.status = res.http.CREATED
+res.status = res.http.CREATED           # 201
+res.status = res.http.NOT_FOUND         # 404
+
 if res.status == res.http.UNAUTHORIZED:
     ...
 ```
 
-## JSON
-
-```python
-# Manual JSON
-res.headers = 'Content-Type', 'application/json'
-res.body = json.dumps({'msg': 'hi'})
-
-# Heaven Helper (if using Schemas)
-# Just return the object matching the schema, Heaven does the rest.
-res.body = MyUserObject() 
-```
-
 ## Headers
 
-Headers are simple key-value tuples. You can add as many as you like.
+Assign a `(key, value)` tuple. Each assignment **adds** a header:
 
 ```python
-# Add one
-res.headers = 'Content-Type', 'application/json'
-
-# Add another
 res.headers = 'X-Powered-By', 'Heaven'
+res.headers = 'Cache-Control', 'no-store'
 ```
 
-## Helpers
+`res.header(key, value)` does the same thing and is chainable.
 
-### `res.redirect(location)`
-Send the user somewhere else.
+!!! warning "Headers are append-only"
+    There is no API to read, replace, or delete a header once set. Assigning `Content-Type` twice sends it twice. Set each header exactly once per request.
+
+## Cookies
 
 ```python
-res.redirect('https://google.com')
+res.cookie('session', token,
+    max_age=3600,
+    httponly=True,
+    secure=True,
+    samesite='Lax',
+    path='/',
+)
 ```
 
-### `res.file(path, filename=None)`
-Stream a file from disk. Heaven handles the content-type automatically.
+Also supported: `expires` (a `datetime`), `domain`, `partitioned`.
+
+## Redirects
 
 ```python
-# Serve inline (e.g. image)
-res.file('images/cat.jpg')
-
-# Force download
-res.file('reports/finance.pdf', filename='final_report.pdf')
+res.redirect('/login')                      # 307 Temporary Redirect
+res.redirect('/new-home', permanent=True)   # 308 Permanent Redirect
 ```
 
-### `res.abort(body)`
-Stop everything immediately. No subsequent hooks will run.
+!!! note "307 and 308 only"
+    Both preserve the original method and body, so a redirected `POST` stays a `POST`. If you need the classic "`POST` then `GET` the new location" behaviour of a 303, set it by hand:
+
+    ```python
+    res.status = 303
+    res.headers = 'Location', '/orders/1'
+    ```
+
+## Files
+
+```python
+res.file('images/cat.jpg')                                  # inline
+res.file('reports/q1.pdf', filename='Q1_Report.pdf')        # force download
+```
+
+The content type is guessed from the extension and the file is streamed with `aiofiles`, so a large file doesn't load into memory or block the loop.
+
+!!! warning "No range requests or caching headers"
+    `res.file()` sends no `ETag`, `Last-Modified`, `Content-Length`, or `Accept-Ranges`. Browsers cannot resume, seek within, or conditionally re-request the file — which rules it out for video seeking. Serve large static assets from Nginx or a CDN and keep `res.file()` for small or access-controlled downloads.
+
+## Streaming
+
+Hand `res.stream()` an async generator to send a response in chunks:
+
+```python
+async def report(req, res, ctx):
+    async def rows():
+        yield 'id,name\n'
+        async for row in db.cursor('SELECT id, name FROM users'):
+            yield f'{row.id},{row.name}\n'
+
+    res.stream(rows(), content_type='text/csv')
+```
+
+### Server-sent events
+
+```python
+res.stream(events(), sse=True)
+```
+
+!!! danger "SSE currently emits a bytes repr"
+    With `sse=True`, Heaven serializes each item and then string-formats it, so the wire output is `data: b'{"i": 0}'` — the Python `bytes` prefix and quotes included. Browsers will not parse that as JSON.
+
+    Until it's fixed, format the frames yourself and stream them as plain text:
+
+    ```python
+    async def events():
+        while True:
+            payload = orjson.dumps(await queue.get()).decode()
+            yield f'data: {payload}\n\n'
+
+    res.stream(events(), content_type='text/event-stream')
+    ```
+
+## Work that outlives the response
+
+`res.defer()` schedules a callback to run **after** the response has been sent — right for a job too small to justify a queue.
+
+```python
+async def send_receipt(app):
+    await mailer.send(...)
+
+async def checkout(req, res, ctx):
+    res.body = {'status': 'ok'}
+    res.defer(send_receipt)
+```
+
+The callback receives the **app**, not the request.
+
+!!! warning "Deferred callbacks must be `async`"
+    A sync function raises `TypeError` *after* the response has already gone out, where you cannot recover or report it. Capture what you need in a closure or `functools.partial`, and always define it with `async def`.
+
+    Note also that deferred callbacks do **not** run under the [Earth](earth.md) test client.
+
+## Aborting
+
+`res.abort(body)` ends the request immediately:
 
 ```python
 if user.is_banned:
     res.status = 403
-    res.abort("Go away.")
+    res.abort('Go away.')
 ```
 
-### `res.defer(func)`
-Run a task *after* the response has been sent to the user. This is great for tasks that shouldn't block the UI but aren't complex enough for a daemon.
+!!! warning "Abort skips all AFTER hooks"
+    Including Heaven's session-saving hook. Anything you rely on an `AFTER` hook to finish will not happen on an aborted request.
+
+## Templates
+
+`res.render()` renders a Jinja2 template into the body — covered in [Templates & Assets](html.md).
 
 ```python
-async def send_email(app):
-    await email_service.send(...)
-
-res.defer(send_email)
-res.body = "Email queued!"
+await res.render('profile.html', user=user)
 ```
 
 ---
 
-## Streaming & Files
-
-Heaven makes it easy to stream large responses or serve files without blocking the server event loop.
-
-### `res.stream(generator)`
-
-Stream data chunk-by-chunk to the client. This is perfect for large datasets or real-time updates.
-
-```python
-async def large_report(req, res, ctx):
-    async def generate():
-        yield "Start of report\n"
-        # Simulate heavy work
-        for i in range(100):
-            yield f"Row {i}\n"
-    
-    # Automatically sets Transfer-Encoding: chunked
-    res.stream(generate())
-```
-
-#### Server-Sent Events (SSE)
-
-You can also create an SSE stream easily:
-
-```python
-res.stream(event_generator(), sse=True)
-```
-
-### `res.file(path)`
-
-Serve a file from the disk. Heaven uses `aiofiles` to stream the file efficiently, so even sending a 10GB file won't spike your RAM or block other requests.
-
-```python
-# Serve inline (e.g. an image)
-res.file('/var/www/image.png')
-
-# Force download
-res.file('/var/www/report.pdf', filename='Annual_Report.pdf')
-```
-
----
-
-**Next:** How do we share data between the router, the request, and the response? On to **[The Context](context.md)**.
+**Next:** HTML, CSS and everything a browser needs → **[Min 13-14 — Templates & Assets](html.md)**

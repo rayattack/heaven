@@ -2,24 +2,60 @@
 
 **Checkmate.**
 
-You have traversed the board. You know the opening (`fly`), the mid-game (`router`, `schema`), and the endgame (`deployment`).
+Thirty minutes ago you had never seen Heaven. You now know the whole framework — not a useful subset of it, the whole thing.
 
-You are no longer just a Python developer. You are a Heaven Master.
+## What you know
 
-## The Future
+```mermaid
+flowchart LR
+    A["<b>3 objects</b><br/>req · res · ctx"] --> B["<b>1 signature</b><br/>(req, res, ctx)"]
+    B --> C["<b>2 registrations</b><br/>app.GET · app.schema.GET"]
+    C --> D["<b>2 interception points</b><br/>BEFORE · AFTER"]
+```
 
-This documentation is short because the framework is simple. But simplicity does not mean weakness. Heaven is capable of powering everything from microservices to massive monolithic platforms.
+Everything else is a detail hanging off those four ideas:
 
-Go forth and build something divine.
+- **Routing** is `app.METHOD(path, handler)`, with `:params`, `*` wildcards, and typed query strings.
+- **Middleware** is a `BEFORE` or `AFTER` hook — the same function shape as a handler.
+- **Validation** is a `TypedDict` registered on the sidecar, which also writes your API docs.
+- **State** is `app.keep()` for the process and `ctx` for the request.
+- **Testing** is `app.earth`, in-process, returning the same three objects.
+
+## Where to go next
+
+<div class="grid cards" markdown>
+
+- **Reference**
+
+    ---
+
+    [API Reference](api.md) — every method, one page
+    [Performance](performance.md) — benchmarks, honestly reported
+    [Recipes](examples.md) — auth, pagination, real patterns
+
+- **Operations**
+
+    ---
+
+    [Going to Production](production.md) — headers, CSP, secrets
+    [Plugins](plugins.md) — extending Heaven
+    [Marketplace](marketplace.md) — community plugins
+
+</div>
+
+## Before you ship
+
+The [production checklist](deployment.md#the-pre-flight-checklist) is short and each item exists because it bites people. The two that matter most:
+
+!!! danger "Set `debug=False` and don't use `app.ASSETS()` publicly"
+    Debug mode serves tracebacks to clients, and `ASSETS` will serve files outside its folder if asked nicely. Both are covered in [Security](security.md) and [Templates & Assets](html.md).
+
+## Contributing
+
+Heaven is small enough to read in an afternoon — roughly 2,400 lines across fifteen modules. That is by design, and it means a first contribution is genuinely approachable.
+
+[Star the repo, file an issue, or open a PR →](https://github.com/rayattack/heaven)
 
 > "Simplicity is the ultimate sophistication." — *Leonardo da Vinci*
-
----
-
-### Where to go from here?
-
-- **[API Reference](api.md)**: The raw dictionary of every method.
-- **[Examples](examples.md)**: Real-world patterns and recipes.
-- **[GitHub](https://github.com/rayattack/heaven)**: Star the repo, file an issue, or contribute.
 
 May your response times be low and your uptime high. ⚡

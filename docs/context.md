@@ -1,86 +1,113 @@
-# The Context 🧠
+# Min 15-16 — The Context 🧠
 
-The `Context` object is your request-scoped memory. It allows you to pass data between hooks, middlewares, and handlers without cluttering function signatures.
-
-The handler signature:
+`ctx` is request-scoped scratch space. It exists so hooks and handlers can pass data to each other without growing function signatures.
 
 ```python
 async def handler(req, res, ctx):
     ...
 ```
 
-## Usage
+## The division of labour
 
-### Storing Data
-You can store data directly on the context using dot notation.
+Heaven keeps the three objects strictly separate, and the split is the whole design:
 
-```python
-app.BEFORE('/dashboard/*', auth_middleware)
+| Object | Holds | Who writes it |
+| :--- | :--- | :--- |
+| `req` | what the client sent | the client |
+| `ctx` | what the server worked out | your hooks and handlers |
+| `res` | what you're sending back | you |
 
-async def auth_middleware(req, res, ctx):
-    user = await db.get_user(req.headers['token'])
-    ctx.user = user
-```
+Other frameworks bolt server-computed state onto the request object. Heaven doesn't, so `req` stays a faithful record of what actually arrived over the wire.
 
-### Retrieving Data
-Once stored, data is available as a property on the `ctx` object.
+## Passing data from a hook to a handler
 
-```python
-async def dashboard_handler(req, res, ctx):
-    # Retrieve 'user' stored by auth_middleware
-    print(f"Welcome back {ctx.user.name}")
-```
-
-!!! warning "Warning"
-    You cannot overwrite reserved keys like `ctx.session`, `ctx.request`, or `ctx.app`. Use `ctx.keep('session', val)` only if you know exactly what you are doing.
-
-## Typed Keys (New in 1.3.7)
-
-When working on large applications, relying on string keys or dynamic attributes can lead to typing issues. Heaven now provides a `Key` generic for type-safe context storage.
+This is what `ctx` is for, and it's the pattern behind almost all Heaven middleware:
 
 ```python
-from heaven import Key, App
+async def authenticate(req, res, ctx):
+    user = await db.get_user(req.headers.get('authorization'))
+    if not user:
+        res.status = 401
+        res.abort('Unauthorized')
+    ctx.user = user                       # hand it forward
 
-# Define typed keys
-UserID = Key[int]("user_id")
-IsAdmin = Key[bool]("is_admin")
+async def dashboard(req, res, ctx):
+    res.body = {'welcome': ctx.user.name}  # already there
 
-async def middleware(req, res, ctx):
-    # Type checkers know this expects an int
-    ctx.keep(UserID, 42) 
-    
-    # This would raise a static type check error!
-    # ctx.keep(UserID, "not an int")
-
-async def handler(req, res, ctx):
-    # Returns int | None (auto-inferred)
-    uid = ctx.peek(UserID)
-    
-    # Returns bool | None
-    admin = ctx.peek(IsAdmin)
+app.BEFORE('/dashboard', authenticate)
+app.GET('/dashboard', dashboard)
 ```
 
-This works for both `ctx.keep/peek` (request-scoped) and `app.keep/peek` (application-scoped).
+## `keep`, `peek`, `unkeep`
 
-## Why not modifies `req`?
-
-Some frameworks attach data to the `Request` object. Heaven believes in separation of concerns.
-
-- **Request**: What the client sent (Immutable-ish).
-- **Context**: What the server figured out (Mutable).
-- **Response**: What the server is sending (Your Envelope).
-
-### Session Management
-If you enable `app.sessions()`, the session data lives here.
+Attribute access is the shorthand; the explicit methods do the same thing:
 
 ```python
-# Read
-user_id = ctx.session.user_id
-
-# Write
-ctx.session.visited = True
+ctx.keep('user', user)        # same as ctx.user = user
+user = ctx.peek('user')       # same as ctx.user
+user = ctx.unkeep('user')     # read and remove
 ```
+
+!!! warning "Missing keys return `None`, they don't raise"
+    `ctx.usr` (typo) quietly evaluates to `None` rather than raising `AttributeError`. A misspelled key looks exactly like a hook that didn't run. When a value is required, assert it:
+
+    ```python
+    user = ctx.peek('user')
+    if user is None:
+        raise RuntimeError('authenticate hook did not run')
+    ```
+
+### Typed keys
+
+For larger apps, a `Key` gives you a checkable name instead of a bare string:
+
+```python
+from heaven import Key
+
+CurrentUser = Key[User]('user')
+IsAdmin = Key[bool]('is_admin')
+
+async def authenticate(req, res, ctx):
+    ctx.keep(CurrentUser, user)      # a type checker rejects the wrong type here
+
+async def dashboard(req, res, ctx):
+    user = ctx.peek(CurrentUser)     # inferred as User | None
+```
+
+The same keys work with `app.keep` / `app.peek` for application state.
+
+## Request scope vs application scope
+
+The distinction matters, and mixing them up causes data to leak between users:
+
+```python
+app.keep('db', pool)     # 🌍 lives for the whole process — pools, config, clients
+ctx.keep('user', user)   # 📨 lives for one request — the caller, a request id
+```
+
+!!! danger "Never put per-request data on the app"
+    `app.keep('current_user', user)` is shared by every concurrent request in the process. The next request will read someone else's user. Per-request data belongs on `ctx`, always.
+
+## Reserved names
+
+`session`, `app`, `request`, `response`, `headers` and `cookies` are reserved on the context and raise if you assign to them:
+
+```python
+ctx.my_data = 123        # fine
+ctx.session = 'hacked'   # AttributeError
+```
+
+## Sessions
+
+With `app.sessions()` enabled, the session lives on the context:
+
+```python
+ctx.session.user_id = 123      # write
+uid = ctx.session.user_id      # read
+```
+
+Sessions are signed cookies — see [Min 27-28 — Security & Sessions](security.md).
 
 ---
 
-**Next:** We've covered the basics. Now let's superpower your app with Schemas. On to **[Interceptors](hooks.md)**.
+**Next:** Intercepting the pipeline → **[Min 17-18 — Hooks](hooks.md)**

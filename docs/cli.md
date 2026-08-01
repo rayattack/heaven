@@ -1,12 +1,10 @@
-# The Command Line 🛠️
+# Min 03-04 — The Command Line 🛠️
 
-In Minute 1, you met `heaven fly`. But you don't just want to fly, you want to pilot. Heaven's CLI is your cockpit. It is precise, informative, and explicitly typed.
+You've met `heaven fly`. The CLI does four more things, and two of them will change how you debug.
 
-## The `heaven` Command
+<div class="termy">
 
-Type `heaven` (or `heaven -h`) to see your controls.
-
-```bash
+```console
 $ heaven
 usage: heaven [-h] {fly,run,routes,handlers,schema} ...
 
@@ -14,7 +12,6 @@ Heaven CLI - The divine interface for your web framework.
 
 positional arguments:
   {fly,run,routes,handlers,schema}
-                        Available commands
     fly                 Zero-config auto-discovery run
     run                 Run a specific application
     routes              Show all registered routes
@@ -22,68 +19,59 @@ positional arguments:
     schema              Export OpenAPI spec to JSON
 ```
 
-## 1. Zero-Config: `heaven fly`
+</div>
 
-The `fly` command is for when you just want to code. It automatically hunts for `app.py`, `main.py`, or similar files in your current directory and launches the first `App` or `Router` instance it finds.
+## `fly` — zero config
 
-```bash
-# Just fly.
-$ heaven fly
-
-# Fly on a different port.
-$ heaven fly --port 8080 --host 0.0.0.0
-```
-
-!!! note "Note"
-    `heaven fly` always enables auto-reload. It is designed for development.
-
-## 2. Explicit Control: `heaven run`
-
-When you go to production or have a complex project structure, you need `run`. This command stops the magic guessing game and does exactly what you tell it.
+Hunts for an `App` or `Router` in `app.py`, `main.py` or similar, and runs it.
 
 ```bash
-# Run the 'app' object in 'main.py'
-$ heaven run main:app
-
-# Production mode (no reload, multiple workers)
-# Note: Heaven wraps uvicorn, so for advanced deployment you can use uvicorn directly too.
-$ heaven run main:app --no-reload --host 0.0.0.0 --port 80
+heaven fly
+heaven fly --port 8080 --host 0.0.0.0
 ```
 
-## 3. Deep Introspection
+!!! note "`fly` is for development"
+    Auto-reload is always on. Use `run` for anything else.
 
-Heaven wants you to know your app better than you know yourself.
-
-### View Your Routes
-See every path, method, subdomain, and protection status in a beautiful table.
+## `run` — explicit
 
 ```bash
-$ heaven routes
-# or specify the app path explicitly
-$ heaven routes --app main:app
+heaven run main:app
+heaven run api.server:application --host 0.0.0.0 --port 8000 --no-reload
 ```
 
-### Inspect Your Handlers
-Have you ever forgotten where a specific endpoint is defined? `handlers` tunnels through decorators, partials, and closures to find the *original* source code.
+The `module:variable` form is the same one uvicorn and gunicorn use.
+
+## `routes` — what's actually registered
+
+The fastest way to answer "why is this 404-ing". Prints every path, method, and subdomain as a table.
 
 ```bash
-# Interactive map of all handlers and their file locations
-$ heaven handlers
-
-# View the source code of a specific handler right in your terminal
-$ heaven handlers /api/users
+heaven routes
+heaven routes --app main:app
 ```
 
-### Export Schema
-Need your OpenAPI spec for a CI pipeline or client generator?
+!!! tip "Check `routes` before you debug a 404"
+    Heaven returns 404 — not 405 — when a path exists but the method doesn't. If a `POST` is mysteriously 404-ing, this table usually shows you a route registered as `GET` and the mystery evaporates.
+
+## `handlers` — where is this code?
+
+Tunnels through decorators, `functools.partial`, and closures to find the **original** function and its source file. Invaluable in a codebase that registers handlers as strings.
 
 ```bash
-$ heaven schema
-# outputs to swagger.json by default
-
-$ heaven schema openapi-v1.json
+heaven handlers                # every handler and its file location
+heaven handlers /api/users     # the source of one endpoint, in your terminal
 ```
+
+## `schema` — export OpenAPI
+
+```bash
+heaven schema                          # -> swagger.json
+heaven schema openapi-v1.json          # custom filename
+```
+
+For CI contract checks or client generation. See [API Docs](openapi.md) — including what the generated spec does and doesn't contain.
 
 ---
 
-**Next:** Now that you can control the server, let's learn how to direct the traffic. On to **[The Router](router.md)**.
+**Next:** Directing the traffic → **[Min 05-06 — The Router](router.md)**

@@ -1,81 +1,109 @@
-# Background Tasks (Daemons)
+# Min 25-26 — Background Work 👻
 
-Heaven includes a powerful, native system for running background tasks, which we call **Daemons**.
+Heaven has two ways to do work outside the request/response cycle, and picking the right one matters.
 
-Unlike other frameworks that require external message queues (like Celery or Redis) for simple background work, Heaven lets you run persistent background loops directly within your application process.
-
-## The `app.daemons` API
-
-You can register a background task by assigning a function to `app.daemons`.
-
-```python
-import asyncio
-
-# A daemon is just a function that takes 'app' as an argument
-async def heartbeat(app):
-    print("Thump-thump...")
-    # Return the number of seconds to sleep before running again
-    return 5 
-
-app.daemons = heartbeat
+```mermaid
+flowchart LR
+    A["Something to do<br/>in the background"] --> B{"Tied to one<br/>request?"}
+    B -->|"yes"| C["<b>res.defer()</b><br/>runs once, after<br/>this response is sent"]
+    B -->|"no — it's a loop"| D["<b>app.daemons</b><br/>runs forever on<br/>an interval"]
 ```
 
-### How it works
-1. **Startup**: When the application starts, Heaven launches all registered daemons as independent asyncio tasks.
-2. **Loop**: The daemon function is executed.
-3. **Sleep**: If the function returns a number (int/float), Heaven waits that many seconds.
-4. **Repeat**: The function is called again.
+| | `res.defer(fn)` | `app.daemons = fn` |
+| :--- | :--- | :--- |
+| Runs | once, after the response | repeatedly, from startup |
+| Receives | the app | the app |
+| Good for | a receipt email, an audit write | cache cleanup, heartbeats, queue polling |
 
-If you return `None` or `False`, the daemon stops runs once and stops.
+## Deferred work
 
-## Sync vs Async
+```python
+async def send_receipt(app):
+    await mailer.send(...)
 
-Heaven supports both synchronous and asynchronous daemons.
+async def checkout(req, res, ctx):
+    res.body = {'status': 'ok'}
+    res.defer(send_receipt)      # runs after the client has its response
+```
 
-### Async (Preferred)
-Runs in the main event loop. Ideal for I/O bound tasks like checking databases, sending batched emails, or cleaning up caches.
+!!! warning "Must be `async`, and takes no arguments but the app"
+    A sync function raises `TypeError` after the response has already been sent, where nothing can catch it. There's also no argument passing — capture what you need in a closure:
+
+    ```python
+    async def checkout(req, res, ctx):
+        order_id = req.data['id']
+
+        async def send(app):                 # closes over order_id
+            await mailer.send(order_id)
+
+        res.defer(send)
+    ```
+
+    Deferred callbacks also do not run under the [Earth](earth.md) test client, and the connection stays open until they finish — keep them short.
+
+## Daemons
+
+A daemon is a function that takes the app and returns **how many seconds to wait before running again**. Return `None` and it runs once and stops.
 
 ```python
 async def cleanup_tokens(app):
-    await db.execute("DELETE FROM tokens WHERE expired = 1")
-    return 60 # Run every minute
+    db = app.peek('db')
+    await db.execute('DELETE FROM tokens WHERE expires_at < NOW()')
+    return 60          # again in a minute
+
+app.daemons = cleanup_tokens
 ```
 
-### Sync
-Runs in a separate thread pool executor to avoid blocking the main server loop. Useful for CPU-intensive tasks, though heavily CPU-bound work is still better off in a separate process.
+Assign `app.daemons` more than once to register several — it appends rather than replaces.
+
+```mermaid
+flowchart LR
+    S(["startup"]) --> R["run daemon(app)"]
+    R --> C{"returned a<br/>number?"}
+    C -->|"yes — N"| W["sleep N seconds"] --> R
+    C -->|"None / False"| E(["stop"])
+```
+
+### Sync daemons are fine
+
+A sync daemon runs in a thread pool executor, so it won't block the event loop:
 
 ```python
-def expensive_report(app):
-    data = calculate_heavy_report()
-    save_to_disk(data)
-    return 3600 # Run every hour
+def rebuild_report(app):
+    heavy_pandas_thing()
+    return 3600          # hourly
+
+app.daemons = rebuild_report
 ```
 
-## Accessing App State
+Genuinely CPU-heavy work still belongs in a separate process — the GIL doesn't care that you used a thread.
 
-Since daemons receive the `app` instance, they have full access to your shared state, databases, and plugins.
+!!! danger "Never block the loop in an async daemon"
+    `time.sleep()`, a synchronous database driver, or a `requests` call inside an `async def` daemon freezes **the entire server** — every concurrent request included. Use `await asyncio.sleep()`, async drivers, or make the daemon sync so it gets a thread.
+
+### Catching a blocked loop
+
+Heaven ships a watchdog that tells you when something has stalled the loop:
 
 ```python
-async def mailer(app):
-    # Access the shared database connection
-    queue = await app.db.fetch_pending_emails()
-    
-    for email in queue:
-        await send_email(email)
-        
-    return 10 # Check every 10 seconds
+app = App(monitor=0.1)     # warn if the loop is blocked > 100ms
 ```
 
-## Event Loop Monitor
-
-Since Heaven runs on a single thread (asyncio), a single blocking operation can freeze the entire server. Heaven includes a built-in **Watchdog** to warn you if this happens.
-
-```python
-# Warn if the event loop is blocked for more than 100ms (0.1s)
-app = App(monitor=0.1)
+```
+WARNING:heaven.monitor:Event Loop Blocked! Lag: 0.1504s
 ```
 
-If a task blocks the loop, you will see a warning in your logs: `WARNING:heaven.monitor:Event Loop Blocked! Lag: 0.1504s`. This is invaluable for debugging latency spikes.
+Turn it on in development. It converts "the server feels slow sometimes" into a specific line of code.
 
+!!! warning "Daemons don't survive mounting"
+    A daemon registered on a child app is dropped when that app is mounted onto a parent — it never starts. Register daemons on the app you actually run.
 
-**Next:** It works locally. Let's show the world. On to **[Deployment](deployment.md)**.
+## When you need a real queue
+
+Daemons run **inside your web process**. That means they stop when it stops, they don't retry, they aren't distributed, and with multiple workers *every worker runs its own copy*.
+
+For work that must not be lost — payments, anything with retry semantics, anything that shouldn't run four times because you set `--workers 4` — use Celery, Dramatiq, or ARQ. Daemons are for periodic in-process chores, not for a job queue.
+
+---
+
+**Next:** Signing, sessions, and secrets → **[Min 27-28 — Security & Sessions](security.md)**

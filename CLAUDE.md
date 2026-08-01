@@ -76,5 +76,5 @@ LLM-optimized reference in `.heaven` file at project root.
 
 - No decorators on handlers
 - Prefer string discovery over direct imports for route handlers
-- `orjson` for JSON serialization (implicit dependency)
-- Framework re-exports pytastic types: `Schema`, `Field`, `Constraints`
+- `orjson` for JSON serialization (imported by 6 modules but **not declared in pyproject.toml** — a clean install fails at `import heaven`)
+- Schemas are plain `TypedDict` + `Annotated["min_len=3; format=email"]` constraint strings. There is **no** `Schema`/`Field`/`Constraints` export — `from heaven import Schema` raises `ImportError`. `heaven` exports `App`/`Application`/`Router`/`Server`, `Request`, `Response`, `Context`, `Key`, `Pytastic`, `ValidationError`, `PytasticError`.

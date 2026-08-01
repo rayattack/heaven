@@ -1,195 +1,237 @@
-# The Router 🛣️
+# Min 05-06 — The Router 🛣️
 
-The Router is the nervous system of your Heaven application. It decides where requests go, what runs before them, and what runs after.
-
-## The Basic Contract
+The router decides where a request goes, what runs before it, and what runs after. It is the one object you configure; everything else follows from it.
 
 ```python
 from heaven import App
 
-app = App() # An Alias for Router()
+app = App()   # App, Application, Router and Server are the same class
+```
 
-app.GET ('/users', get_users)
-app.POST('/users', create_user)
-app.PUT ('/users/:id', update_user)
+## Registering routes
+
+```python
+app.GET   ('/users',     get_users)
+app.POST  ('/users',     create_user)
+app.PUT   ('/users/:id', replace_user)
+app.PATCH ('/users/:id', update_user)
 app.DELETE('/users/:id', delete_user)
 ```
 
-## The String Paradigm (Lazy Loading)
+Also available: `OPTIONS`, `TRACE`, `CONNECT`, plus `HTTP(route, handler)` to register one handler across every method, and `SOCKET` / `WS` / `WEBSOCKET` for websockets.
 
-Heaven supports a "String Paradigm" that allows you to pass the **import path** of your handler instead of the function itself.
+!!! warning "No `HEAD`, no automatic `OPTIONS`, no `405`"
+    Three sharp edges worth knowing before you hit them:
 
-**This works everywhere.** Routes, Hooks, Lifecycle events, and Daemons.
+    - **`HEAD` is not synthesized** from a `GET` route, and there is no `app.HEAD()`. Even `app.HTTP()` skips it. The only way to serve `HEAD` today is the low-level escape hatch `app.abettor('HEAD', '/ping', handler)`.
+    - **`OPTIONS` is not auto-answered** unless you call `app.cors()`, which registers a catch-all for you.
+    - **A method mismatch returns `404`, not `405`**, and no `Allow` header is sent.
 
-#### 1. Routes
+## Path parameters
 
-```python
-# No need to import the function!
-app.GET('/users', 'controllers.user.get_all')
-app.POST('/users', 'controllers.user.create')
-app.PUT ('/users/:id', update_user)
-app.DELETE('/users/:id', delete_user)
-```
-
-#### 2. Hooks (Middleware)
-```python
-# Instead of: from middleware.auth import check_token
-app.BEFORE('/dashboard/*', 'middleware.auth.check_token')
-```
-
-#### 3. Lifecycle
-```python
-# Instead of: from db import connect
-app.ON('startup', 'db.connect')
-```
-
-### Why use strings?
-1.  **Speed**: Modules are imported only when the application starts or when routes are hit.
-2.  **Cleanliness**: No more 50-line import blocks at the top of your file.
-3.  **Decoupling**: Solves circular import headaches instantly.
-
-## Subdomains
-
-Heaven handles subdomains natively. No "Blueprint" confusion.
+Prefix a segment with `:` to capture it. Read it back from `req.params`.
 
 ```python
-# Matches: https://api.mysite.com/users
-app.GET('/users', handler, subdomain='api')
+app.GET('/users/:id/orders/:order_id', handler)
 
-# Matches: https://admin.mysite.com/dashboard
-app.GET('/dashboard', handler, subdomain='admin')
+async def handler(req, res, ctx):
+    user_id  = req.params.get('id')        # '42'  (a string)
+    order_id = req.params.get('order_id')  # 'abc' (a string)
 ```
 
-OR
+Append `:int` to have Heaven cast it for you:
 
-```py
-api = app.subdomain('api')
-admin = app.subdomain('admin')
-
-# Matches: https://api.mysite.com/users
-api.GET('/users', handler)
-
-# Matches: https://admin.mysite.com/dashboard
-admin.GET('/dashboard', handler)
+```python
+app.GET('/users/:id:int', handler)   # req.params.get('id') -> 42, an int
 ```
 
-For more on subdomains, see [Minute 7-8: Subdomains](subdomains.md).
+!!! danger "Path params only cast `:int`"
+    `:int` and `:str` are the only casts applied to **path** parameters. Writing `/users/:id:uuid` or `/report/:day:date` is accepted silently but you still get a **string** back. Cast it yourself in the handler.
 
-## Lifecycle Hooks: `ON` and `ONCE`
+    Query strings are the exception — they support the full set. See below.
 
-You have full control over the lifespan of your application.
+### Wildcards
 
-### `ONCE(func)` or `ON(STARTUP, func)`
-Run code when the server starts. Perfect for database connections.
+A trailing `*` captures the rest of the path into `req.params['*']`.
+
+```python
+app.GET('/files/*', serve)
+
+async def serve(req, res, ctx):
+    rest = req.params.get('*')    # 'reports/2026/q1.pdf'
+```
+
+### Typed query strings
+
+Declare query parameters in the route string and Heaven coerces them on the way in. Unlike path params, **all six types work here**.
+
+```python
+app.GET('/search?page:int&since:date&exact:bool', search)
+
+async def search(req, res, ctx):
+    page  = req.queries.get('page')    # 3            int
+    since = req.queries.get('since')   # date(2026,1,1)
+    exact = req.queries.get('exact')   # True         bool
+```
+
+Supported: `:int`, `:float`, `:bool`, `:str`, `:date`, `:datetime`, `:uuid`.
+
+!!! note "Coercion failures are silent"
+    If a client sends `?page=banana`, Heaven does not raise — you get the raw string `'banana'` back. Validate anything you actually depend on.
+
+## How a request finds its handler
+
+Heaven keeps one route trie per HTTP method per subdomain and walks it segment by segment. There is no regex matching and no linear scan through a route list, which is a large part of why it is fast.
+
+```mermaid
+flowchart TD
+    A["Request arrives"] --> B{"Which subdomain?<br/><code>api.site.com</code>"}
+    B -->|"registered"| C["that subdomain's trie"]
+    B -->|"unknown"| D["wildcard <code>*</code>, else <code>www</code>"]
+    C --> E{"Walk path segments<br/>/users/42/orders"}
+    D --> E
+    E -->|"exact segment"| F["descend"]
+    E -->|":param"| F
+    E -->|"trailing *"| F
+    F --> G{"Handler at this node?"}
+    G -->|"no"| H["404 Not found"]
+    G -->|"yes"| I["BEFORE hooks"]
+    I --> J["handler(req, res, ctx)"]
+    J --> K["AFTER hooks"]
+    K --> L["Response sent"]
+```
+
+Trailing slashes are insignificant: `/users/`, `/users` and `//users` all match the same route. No redirect is issued.
+
+## The string paradigm
+
+Every place Heaven takes a handler, it also takes a dotted import path. The module is imported when the route is registered.
+
+=== "Routes"
+
+    ```python
+    app.GET('/users', 'controllers.users.index')
+    app.POST('/users', 'controllers.users.create')
+    ```
+
+=== "Hooks"
+
+    ```python
+    app.BEFORE('/dashboard/*', 'middleware.auth.check_token')
+    ```
+
+=== "Lifecycle"
+
+    ```python
+    app.ON('startup', 'db.connect')
+    ```
+
+Why it's worth using:
+
+1. **No import blocks.** Your `app.py` stays a routing table instead of an import manifest.
+2. **No circular imports.** Handlers that need the app no longer import the module that imports them.
+3. **Readable diffs.** A new endpoint is one line in one file.
+
+## Application lifecycle
+
+Run code when the server boots and when it shuts down. Both callbacks receive the **app**, not a request.
 
 ```python
 async def connect_db(app):
-    db = await Database.connect()
-    app.keep('db', db) # Persist it globally
+    app.keep('db', await Database.connect())   # store on the app
 
-app.ONCE(connect_db)
+async def close_db(app):
+    await app.peek('db').close()
+
+app.ONCE(connect_db)          # same as app.ON('startup', connect_db)
+app.ON('shutdown', close_db)
 ```
 
-### `ON(SHUTDOWN, func)`
-Clean up when the server stops.
+Read it back inside any handler through `req.app`:
 
 ```python
-async def cleanup(app):
-    db = app.peek('db')
-    await db.close()
-
-app.ON('shutdown', cleanup)
+async def list_users(req, res, ctx):
+    db = req.app.peek('db')
+    res.body = await db.fetch('SELECT * FROM users')
 ```
 
-## Middleware: Hooks
+!!! danger "Startup failures do not stop the server"
+    If a startup callback raises, Heaven prints a notice and **starts anyway**. A failed database connection produces a running server that 500s on every request rather than a server that refuses to boot. If boot-time correctness matters, assert it yourself:
 
-Heaven doesn't use the confusing "middleware stack" pattern. instead, it uses explicit `BEFORE` and `AFTER` hooks.
+    ```python
+    async def connect_db(app):
+        try:
+            app.keep('db', await Database.connect())
+        except Exception:
+            import sys; sys.exit(1)     # fail loudly
+    ```
 
-### `BEFORE`
-Runs before a request hits the handler. If you abort here, the handler never runs.
+## Application state: `keep`, `peek`, `unkeep`
+
+`app.keep()` is Heaven's answer to dependency injection — one shared bucket, set at startup, read anywhere.
 
 ```python
-async def check_auth(req, res, ctx):
-    if not req.headers.get('Authorization'):
-        res.status = 401
-        res.abort('Unauthorized')
-
-# Protects /dashboard and everything under it
-app.BEFORE('/dashboard/*', check_auth)
+app.keep('db', pool)          # store
+pool = app.peek('db')         # read
+pool = app.unkeep('db')       # read and remove
 ```
 
-### `AFTER`
-Runs after the handler returns. Good for logging or modifying headers.
+For type safety, use a `Key`:
 
 ```python
-async def add_server_header(req, res, ctx):
-    res.headers = 'Server', 'Heaven/0.6'
+from heaven import Key
 
-app.AFTER('/*', add_server_header)
+Pool = Key[Database]('db')
+
+app.keep(Pool, pool)
+db = app.peek(Pool)           # your type checker knows this is Database | None
 ```
 
-## Core Features: CORS & Sessions 🛡️
+!!! tip "App state vs context"
+    `app.keep` lives for the life of the **process** — connection pools, config, clients. `ctx.keep` lives for the life of one **request** — the current user, a request id. Never put per-request data on the app; it leaks across requests.
 
-Heaven comes with built-in support for CORS and secure sessions.
-
-### `app.cors()`
-Enable Cross-Origin Resource Sharing with a single line.
+## CORS
 
 ```python
-app.cors(origins='https://myapp.com', methods=['GET', 'POST'])
+app.cors()                                  # allow everything
+
+app.cors(
+    origin=['https://myapp.com'],           # a list reflects matching origins
+    methods=['GET', 'POST'],
+    headers=['Authorization', 'Content-Type'],
+    credentials=True,
+    max_age=3600,
+)
 ```
 
-### `app.sessions()`
-Enable signed, secure cookie-sessions.
+`app.cors()` simply registers a `BEFORE('/*')` hook plus a catch-all `OPTIONS` route. Argument names are forgiving — `max_age`, `maxAge` and `MAX_AGE` all work, as do `origin`/`origins`.
+
+!!! warning "`credentials=True` needs an explicit origin"
+    The defaults are `origin='*'`, `methods='*'`, `headers='*'`. Browsers reject `Allow-Origin: *` together with credentials, and Heaven does not catch that combination for you. Pass a real origin list whenever you use cookies.
+
+## Sessions
 
 ```python
-app.sessions(secret_key='keep-it-secret')
-
-# In your handler:
-# ctx.session.user_id = 123
+app.sessions(secret_key='keep-it-secret', max_age=86400)
 ```
 
-## Daemons: Background Tasks 👻
-
-Heaven has a built-in process manager for background tasks. No Celery required.
-
-!!! warning "Warning"
-    Heaven is single-threaded. **Never** block the main loop with `time.sleep()`.
-
-### creating a Daemon
-A daemon is a function that receives the `app` instance. If it returns a number `N`, it sleeps for `N` seconds and runs again.
+Then in any handler:
 
 ```python
-async def heartbeat(app):
-    print("Lub-dub...")
-    # Sleep 5 seconds, then repeat
-    return 5
-
-app.daemons = heartbeat
+ctx.session.user_id = 123      # write
+uid = ctx.session.user_id      # read
 ```
 
-## Mounting Applications
+Sessions are signed cookies — see [Min 27-28 — Security](security.md) for the details and the caveats.
 
-You can mount entire other Heaven apps onto your main app. This is how you build modular monoliths.
+## Where next
 
-```python
-from heaven import App
-from my_blog import blog_app
-from my_store import store_app
+Hooks, mounting and daemons each get their own chapter:
 
-main = App()
-
-# Mounts blog_app at /blog
-main.mount(blog_app) 
-
-# Note: Mounting merges routes.
-# If blog_app had a route '/posts', it is now accessible on main at '/posts'
-# Wait, let's clarify alignment with minute 8.
-```
-
-!!! tip "Tip"
-    Use `mount` to split your code into multiple files/modules, then simply combine them in `main.py`.
+- Middleware → [Min 17-18 — Hooks](hooks.md)
+- Mounting and subdomains → [Min 07-08 — Subdomains & Mounting](subdomains.md)
+- Background work → [Min 25-26 — Background Work](daemons.md)
 
 ---
 
-**Next:** Now that we know how to route the request, let's learn how to read it. On to **[Minute 4: The Request](request.md)**.
+**Next:** One app, many hostnames → **[Min 07-08 — Subdomains & Mounting](subdomains.md)**

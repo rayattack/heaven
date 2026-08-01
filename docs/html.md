@@ -1,68 +1,78 @@
-# Templating & Files
+# Min 13-14 — Templates & Assets 🎨
 
-Heaven uses [Jinja2](https://jinja.palletsprojects.com/) for templating, but keeps it async and non-blocking.
+Heaven renders HTML with [Jinja2](https://jinja.palletsprojects.com/), asynchronously by default.
 
-## Serving Static Files
+## Static files
 
-First, let's serve your CSS and images.
+Point a URL prefix at a folder on disk:
 
 ```python
-# Map /static to 'assets' folder
-# 'OR' serve everything in 'assets' folder at '/static' URL
-app.ASSETS('/static', 'assets')
+app.ASSETS('assets')                 # serves ./assets at /assets/*
+app.ASSETS('assets', '/static/*')    # serves ./assets at /static/*
 ```
 
-Now `assets/logo.png` is available at `http://localhost:8000/static/logo.png`.
+`assets/logo.png` is now at `http://localhost:8000/assets/logo.png`.
 
-## Enabling Templates
+!!! danger "`ASSETS` does not sandbox the folder — do not expose it publicly"
+    Heaven joins the requested path onto the asset folder without normalising it, so `..` segments escape the directory. A request for `/assets/../../../../etc/passwd` returns that file.
 
-Tell Heaven where your templates live.
+    **In production, serve static files from Nginx, Caddy, or a CDN** — which is faster anyway — and keep `app.ASSETS()` for local development. If you must use it on a public server, put a proxy rule in front that rejects `..` in the path.
+
+!!! tip "Paths are relative to the working directory"
+    By default the folder is resolved from wherever the process was started, which breaks when you run from a different directory. Anchor it to a file instead:
+
+    ```python
+    app.ASSETS('assets', relative_to=__file__)
+    ```
+
+## Templates
 
 ```python
-# 'templates' is the folder name
 app.TEMPLATES('templates')
 ```
 
-## Rendering HTML
-
-You can render templates asynchronously.
+Then render into the response body:
 
 ```python
-async def index(req, res, ctx):
-    ctx.keep('user_name', 'Visitor')
-    
-    # Render 'index.html'
-    # You can pass extra variables directly (e.g. title)
-    await res.render('index.html', title="Welcome Home")
+async def profile(req, res, ctx):
+    ctx.keep('user_name', 'Ada')
+    await res.render('profile.html', title='Your Profile')
 ```
 
-### Automatic Context
+| Method | Use when |
+| :--- | :--- |
+| `await res.render(name, **vars)` | the normal case — async rendering |
+| `res.renders(name, **vars)` | templates configured with `asynchronous=False` |
+| `await res.interpolate(name, **vars)` | you want the rendered **string** back instead of setting the body |
 
-Heaven automatically injects the three musketeer objects into **every** template:
+`TEMPLATES()` also takes `relative_to=__file__`, an `escape=` override, and `prefix=` for namespacing (below).
 
-- `req`: The current Request object `a.k.a` **Portos**.
-- `res`: The current Response object `a.k.a` **Athos**.
-- `ctx`: The current Context object `a.k.a` **Aramis**.
+## What every template can see
 
-> PS: D'Artagnan is not a musketeer but in the spirit of camarederie he can be the **Router**
-
-**In your `index.html`:**
+Heaven injects the three request objects into every template automatically:
 
 ```html
-<!-- Access variables from ctx -->
 <h1>Hello, {{ ctx.user_name }}</h1>
-
-<!-- Access request info -->
 <p>You are visiting: {{ req.url }}</p>
-
-<!-- Access response info -->
 <p>Status: {{ res.status }}</p>
 
-<!-- Access passed variables -->
-<title>{{ title }}</title>
+<title>{{ title }}</title>   <!-- anything you passed to render() -->
+```
+
+So `ctx` doubles as your template context — anything a `BEFORE` hook stashed there is available in the template without being threaded through `render()`.
+
+## Combining template folders
+
+Call `TEMPLATES()` more than once and the folders are searched in order. Add a `prefix` to namespace a set — useful when mounting apps that each ship their own templates and might collide on `index.html`.
+
+```python
+app.TEMPLATES('templates')
+app.TEMPLATES('blog/templates', prefix='blog')
+
+await res.render('index.html')        # from ./templates
+await res.render('blog/index.html')   # from ./blog/templates
 ```
 
 ---
 
-
-**Next:** We've covered the basics. Now let's superpower your app with Schemas. On to **[Interceptors](hooks.md)**.
+**Next:** Sharing state between hooks and handlers → **[Min 15-16 — The Context](context.md)**

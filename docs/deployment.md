@@ -1,48 +1,100 @@
-# Deployment 🚀
+# Min 29-30 — Deployment 🚀
 
-You have built a masterpiece. Now it must scale.
+Heaven is an ASGI application, so anything that serves ASGI serves Heaven: `uvicorn`, `hypercorn`, `granian`, `daphne`.
 
-Heaven is built on top of **ASGI** (Asynchronous Server Gateway Interface), which means it can be served by any industry-standard ASGI server like `uvicorn`, `hypercorn`, or `daphne`.
+## The pre-flight checklist
 
-## Method 1: The Heaven Way
+Run through this before the first public request:
 
-The simplest way to deploy is using the built-in CLI, which wraps `uvicorn` with optimal defaults.
+- [x] `App(debug=False)` — otherwise tracebacks are served to clients
+- [x] `SECRET_KEY` read from the environment, never committed
+- [x] Static files served by your proxy, not `app.ASSETS()` ([why](html.md#static-files))
+- [x] A body-size limit in the proxy — Heaven has none
+- [x] `--no-reload`
+- [x] Security headers ([copy-paste hook](production.md))
 
-```bash
-$ heaven run main:app --host 0.0.0.0 --port 80 --no-reload --workers 4
-```
+## Running it
 
-- **`--no-reload`**: Vital for production performance.
-- **`--workers 4`**: Run multiple processes to utilize all CPU cores.
+=== "Heaven CLI"
 
-## Method 2: Gunicorn (The Pro Way)
+    ```bash
+    heaven run main:app --host 0.0.0.0 --port 8000 --no-reload
+    ```
 
-For robust process management, `gunicorn` with `uvicorn` workers is the industry standard.
+    A thin wrapper over uvicorn. Fine for a container that already has a process manager around it.
 
-```bash
-$ pip install gunicorn
-$ gunicorn main:app -w 4 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:80
-```
+=== "Uvicorn"
 
-## Method 3: Docker
+    ```bash
+    uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4
+    ```
 
-Keep it contained.
+=== "Gunicorn"
+
+    ```bash
+    gunicorn main:app -w 4 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:8000
+    ```
+
+    Gunicorn's process supervision — restarting workers that die or leak — is what you want on a long-running host.
+
+!!! warning "`app.listen()` is broken on modern uvicorn"
+    `Router.listen()` passes a `debug=` argument that uvicorn removed years ago, so it raises `TypeError`. Use the CLI or run uvicorn directly.
+
+!!! danger "Workers multiply your daemons"
+    Each worker process runs its own copy of every [daemon](daemons.md). With `--workers 4`, a cleanup daemon runs four times on every tick. Either run daemons in a single dedicated process, or make them idempotent and safe to race.
+
+## Docker
 
 ```dockerfile
-FROM python:3.9-slim
+FROM python:3.12-slim
 
 WORKDIR /app
-COPY . .
-RUN pip install heaven
 
-# Run via Heaven CLI
-CMD ["heaven", "run", "main:app", "--host", "0.0.0.0", "--port", "80", "--no-reload"]
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+ENV PYTHONUNBUFFERED=1
+
+CMD ["heaven", "run", "main:app", "--host", "0.0.0.0", "--port", "8000", "--no-reload"]
 ```
 
-## Reverse Proxy
+!!! tip "Pin `orjson` yourself"
+    Heaven imports `orjson` but does not currently declare it as a dependency, so a clean install can fail at `import heaven`. Put `orjson` in your own `requirements.txt` until that's fixed upstream.
 
-Always put **Nginx** or **Caddy** in front of your Heaven app to handle SSL, static assets, and load balancing.
+## Behind a proxy
+
+Put Nginx or Caddy in front for TLS, static files, and body limits:
+
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name example.com;
+
+    client_max_body_size 10M;          # Heaven has no limit of its own
+
+    location /static/ {
+        alias /var/www/app/assets/;    # faster, and avoids app.ASSETS()
+        expires 30d;
+    }
+
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_http_version 1.1;         # websockets
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}
+```
+
+There's a fuller treatment — security headers, CSP, secrets — in [Going to Production](production.md).
 
 ---
 
-**Next:** You made it. On to **[Mastery](congrats.md)**.
+**Next:** You made it → **[Mastery](congrats.md)**

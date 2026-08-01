@@ -1,83 +1,130 @@
-# Security & Signing
+# Min 27-28 — Security & Sessions 🔐
 
-Heaven takes security seriously. It provides strict, type-safe tools for handling sensitive data, signatures, and secure cookies.
+Heaven gives you signed sessions and a token signer. It deliberately does **not** give you an auth system — no user model, no password hashing, no OAuth. Those are yours to choose.
 
-## Secure Serializer
+## Sessions
 
-The `heaven.security.SecureSerializer` class is a high-performance alternative to `itsdangerous`. It uses `msgspec` for ultra-fast JSON serialization and `HMAC-SHA256` for signing.
+```python
+app.sessions(secret_key=os.environ['SECRET_KEY'], max_age=86400)
+```
 
-### Basic Usage
+Then read and write through the context:
+
+```python
+async def login(req, res, ctx):
+    ctx.session.user_id = user.id
+
+async def profile(req, res, ctx):
+    uid = ctx.session.user_id
+    if not uid:
+        res.status = 401
+        res.abort('Login required')
+```
+
+Sessions are **signed cookies**: the data lives in the client's cookie, signed so it can't be tampered with. Heaven sets `httponly=True`, `samesite='Lax'` and `path='/'` by default, and only re-sends the cookie when the session actually changed.
+
+```python
+app.sessions(
+    secret_key=SECRET,
+    cookie_name='__Secure-Session',
+    max_age=86400,
+    secure=True,           # HTTPS only — set this in production
+)
+```
+
+!!! danger "Signed does not mean encrypted"
+    The payload is base64, not ciphertext. Anyone holding the cookie can read its contents; they just can't change them without the key. **Never put anything secret in a session** — store a user id and look the rest up.
+
+!!! warning "Session writes are lost on an aborted request"
+    Sessions save in an `AFTER` hook, and `res.abort()` — including the automatic abort on a 422 validation failure — skips all AFTER hooks. If a request writes to the session and then aborts, that write silently disappears.
+
+!!! note "No server-side sessions, no rotation helper"
+    There is no server-side session store and no built-in session-fixation protection. After a privilege change (login, role switch), issue a fresh session yourself rather than reusing the existing one.
+
+## Signing tokens
+
+`SecureSerializer` signs arbitrary JSON-serializable data with HMAC-SHA256 — the same job as `itsdangerous`. Use it for password-reset links, email confirmation tokens, and anything else you hand to a client and expect back unmodified.
 
 ```python
 from heaven.security import SecureSerializer
 
-# Initialize with a secret key
-signer = SecureSerializer(secret_keys="my-super-secret-key")
+signer = SecureSerializer(secret_keys='my-super-secret-key')
 
-# data -> signed token
-token = signer.dumps({"user_id": 123, "role": "admin"})
-print(token) 
-# Output: eyJ1c2... . ... .signature
+token = signer.dumps({'user_id': 123, 'action': 'reset-password'})
+# 'eyJ1c2VyX2lkIjo...' — payload.timestamp.signature
 
-# token -> data
 data = signer.loads(token)
-print(data)
-# Output: {'user_id': 123, 'role': 'admin'}
+# {'user_id': 123, 'action': 'reset-password'}
 ```
 
-### Expiration (Max Age)
+### Expiry
 
-You can enforce expiration on tokens.
+Tokens are timestamped at signing, so you can enforce a maximum age when you verify:
 
 ```python
+from heaven.security import BadSignature, SignatureExpired
+
 try:
-    # Valid only for 60 seconds
-    data = signer.loads(token, max_age=60)
+    data = signer.loads(token, max_age=900)      # valid for 15 minutes
 except SignatureExpired:
-    print("Token is too old!")
+    res.status = 410
+    res.abort('This link has expired.')
 except BadSignature:
-    print("Don't try to hack me!")
+    res.status = 400
+    res.abort('Invalid link.')
 ```
 
-### Key Rotation
+`SignatureExpired` is a subclass of `BadSignature` — catch it **first** if you want to tell users apart from attackers.
 
-Heaven supports key rotation out of the box. Pass a list of keys to the constructor. 
+### Key rotation
 
-*   **First Key**: Used for *signing* new data.
-*   **All Keys**: Used for *verifying* incoming data.
-
-This allows you to rotate secrets without logging out all active users.
+Pass a list. The first key signs; every key is tried when verifying, so you can retire a secret without invalidating live tokens.
 
 ```python
-# [New Key, Old Key]
-signer = SecureSerializer(secret_keys=["new-secret-2025", "old-secret-2024"])
+signer = SecureSerializer(secret_keys=['new-secret-2026', 'old-secret-2025'])
 ```
 
-## Strict Schema Validation
+Deploy with both, wait longer than your token lifetime, then drop the old one.
 
-Because `SecureSerializer` uses `msgspec` under the hood, you can enforce a schema on the decoded data.
+### Validating the payload
+
+Pass `type=` to validate the decoded payload against a schema, so a malformed token fails as a `BadSignature` rather than a `KeyError` deep in your handler:
 
 ```python
-from msgspec import Struct
+from typing import TypedDict
 
-class UserToken(Struct):
+class ResetToken(TypedDict):
     user_id: int
-    role: str
+    action: str
 
-# Returns a UserToken object, or raises error if structure doesn't match
-data = signer.loads(token, type=UserToken)
+data = signer.loads(token, type=ResetToken)
 ```
 
-## Context Security
+!!! note "Tokens expire in 2106"
+    Timestamps are packed as unsigned 32-bit integers, so signed tokens roll over on 7 February 2106. Noting it for completeness rather than urgency.
 
-Heaven's `Context` object (`ctx`) is protected against accidental overwrites of critical keys.
+## Turn off debug in production
 
 ```python
-async def handler(req, res, ctx):
-    ctx.my_data = 123 # OK
-    
-    ctx.session = "hacked" # raises AttributeError!
-    # 'session', 'app', 'request', 'response' are reserved.
+app = App(debug=False)
 ```
 
-**Next:** It works locally. Let's show the world. On to **[Deployment](deployment.md)**.
+!!! danger "`debug=True` is the default"
+    In debug mode an unhandled exception renders a "Guardian Angel" page containing the **exception message, full traceback, handler name, and Python version**. If your exception text includes a connection string or credential, that goes straight to the client.
+
+    Set `debug=False` for anything reachable from the internet. It is the single most important production setting in Heaven.
+
+## What Heaven does not provide
+
+Being explicit so you don't discover a gap in an incident review:
+
+- **No CSRF protection.** No token generation, no double-submit helper. If you serve HTML forms with cookie sessions, you need this — implement it as a `BEFORE` hook, or rely on `samesite` plus a custom-header check for JSON APIs.
+- **No auth utilities.** No JWT, OAuth2, API-key, or HTTP Basic helpers. Bring `pyjwt` or `authlib` and write a `BEFORE` hook.
+- **No rate limiting.**
+- **No request size limits.** The whole body is buffered in memory before your handler runs — cap it in your reverse proxy.
+- **No security headers by default.** [Going to Production](production.md) has a copy-paste hook for these.
+- **No HTTPS redirect or trusted-host checks.** Handle both at the proxy.
+
+---
+
+**Next:** Ship it → **[Min 29-30 — Deployment](deployment.md)**

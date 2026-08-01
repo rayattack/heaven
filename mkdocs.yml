@@ -1,7 +1,7 @@
-site_name: Heaven Web Framework (Routerling)
+site_name: Heaven
 site_url: https://rayattack.github.io/heaven
 
-site_description: Web Application Framework
+site_description: An async Python web framework you can master in 30 minutes.
 site_author: Raymond Ortserga
 
 repo_name: rayattack/heaven
@@ -9,12 +9,37 @@ repo_url: https://www.github.com/rayattack/heaven
 
 theme:
   name: 'material'
-  palette:
-    primary: black
-  include_search_page: false
-  feature:
-    tabs: true
   logo: 'images/logo.png'
+  favicon: 'images/logo.png'
+  include_search_page: false
+  icon:
+    repo: fontawesome/brands/github
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: black
+      accent: deep orange
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: black
+      accent: deep orange
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.top
+    - navigation.footer
+    - navigation.indexes
+    - toc.follow
+    - content.code.copy
+    - content.code.annotate
+    - search.highlight
+    - search.suggest
 
 plugins:
   - search
@@ -25,27 +50,31 @@ plugins:
 
 nav:
   - Introduction: index.md
-  - The Beginning: quickstart.md
-  - The Command Line: cli.md
-  - The Router: router.md
-  - Subdomains: subdomains.md
-  - The Request: request.md
-  - The Response: response.md
-  - The Context: context.md
-  - HTML & Assets: html.md
-  - Interceptors: hooks.md
-  - Schemas: schema.md
-  - API Docs: openapi.md
-  - Testing (Earth): earth.md
-  - Background Tasks: daemons.md
-  - Security & Plugins: security.md
-  - Deployment: deployment.md
-  - Congrats: congrats.md
-  - Appendix&colon; Going to Production: production.md
-  - Appendix&colon; Plugins System: plugins.md
-  - Appendix&colon; Plugin Marketplace: marketplace.md
-  - Appendix&colon; API Reference: api.md
-  - Appendix&colon; Examples: examples.md
+  - The 30 Minutes:
+    - 'Min 01-02 &mdash; The Beginning': quickstart.md
+    - 'Min 03-04 &mdash; The Command Line': cli.md
+    - 'Min 05-06 &mdash; The Router': router.md
+    - 'Min 07-08 &mdash; Subdomains & Mounting': subdomains.md
+    - 'Min 09-10 &mdash; The Request': request.md
+    - 'Min 11-12 &mdash; The Response': response.md
+    - 'Min 13-14 &mdash; Templates & Assets': html.md
+    - 'Min 15-16 &mdash; The Context': context.md
+    - 'Min 17-18 &mdash; Hooks': hooks.md
+    - 'Min 19-20 &mdash; Schemas & Validation': schema.md
+    - 'Min 21-22 &mdash; API Docs': openapi.md
+    - 'Min 23-24 &mdash; Testing with Earth': earth.md
+    - 'Min 25-26 &mdash; Background Work': daemons.md
+    - 'Min 27-28 &mdash; Security & Sessions': security.md
+    - 'Min 29-30 &mdash; Deployment': deployment.md
+    - 'Mastery': congrats.md
+  - Reference:
+    - 'API Reference': api.md
+    - 'Performance': performance.md
+    - 'Recipes': examples.md
+    - 'Going to Production': production.md
+  - Plugins:
+    - 'Plugins System': plugins.md
+    - 'Marketplace': marketplace.md
 
 extra_css:
   - 'css/custom.css'
@@ -53,11 +82,14 @@ extra_css:
 
 markdown_extensions:
   - markdown.extensions.admonition
+  - markdown.extensions.attr_list
+  - markdown.extensions.md_in_html
   - markdown.extensions.codehilite:
       guess_lang: false
   - markdown.extensions.def_list
   - markdown.extensions.footnotes
   - markdown.extensions.meta
+  - markdown.extensions.tables
   - markdown.extensions.toc:
       permalink: true
   - pymdownx.arithmatex
@@ -66,18 +98,28 @@ markdown_extensions:
   - pymdownx.caret
   - pymdownx.critic
   - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
   - pymdownx.inlinehilite
   - pymdownx.keys
   - pymdownx.magiclink:
       repo_url_shorthand: true
-      user: squidfunk
-      repo: mkdocs-material
+      user: rayattack
+      repo: heaven
   - pymdownx.mark
   - pymdownx.smartsymbols
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
   - pymdownx.tasklist:
       custom_checkbox: true
   - pymdownx.tilde
+
 extra_javascript:
   - js/termynal.js
   - js/custom.js
