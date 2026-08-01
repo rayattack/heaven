@@ -71,6 +71,19 @@ async def welcome(req, res, ctx):
 app.GET('/api/v1/welcome', welcome)
 ```
 
+Prefer grouping routes by subject? Register a method with `Class#method`:
+```python
+# controllers/orders.py
+from heaven import Handler
+
+class Orders(Handler):
+    async def index(self):
+        self.res.body = await self.req.app.peek('db').orders()
+
+app.GET('/orders', 'controllers.orders.Orders#index')
+```
+`self.req`, `self.res` and `self.ctx` are the same three objects, and Heaven builds one instance per request so `self` is never shared.
+
 3. **Protect** (Automatic OpenAPI)
 ```python
 from typing import Annotated, TypedDict

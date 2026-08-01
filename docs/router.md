@@ -152,6 +152,41 @@ Why it's worth using:
 2. **No circular imports.** Handlers that need the app no longer import the module that imports them.
 3. **Readable diffs.** A new endpoint is one line in one file.
 
+### Grouping handlers in a class
+
+When a set of routes shares a subject, `Class#method` registers a method instead of a function. The class subclasses `heaven.Handler`:
+
+```python
+# controllers/orders.py
+from heaven import Handler
+
+class Orders(Handler):
+    async def index(self):
+        self.res.body = await self.req.app.peek('db').orders()
+
+    async def show(self):
+        self.res.body = await self.find(self.req.params.get('id'))
+
+    async def find(self, reference):        # a plain helper, not a route
+        ...
+```
+
+```python
+app.GET('/orders', 'controllers.orders.Orders#index')
+app.GET('/orders/:id', 'controllers.orders.Orders#show')
+```
+
+The three objects a function handler is handed arrive as `self.req`, `self.res` and `self.ctx`, so both styles are the same contract written differently. Methods can be sync or async, hooks accept the same form, and everything else (streaming, schemas, subdomains) works exactly as it does for functions.
+
+**Heaven builds one instance per request.** `self` belongs to the request being served and is thrown away afterwards, so two requests in flight never share it. That also means instance attributes do not persist between requests: put shared state on the app with `app.keep()`, and per-request state on `self` or `ctx`.
+
+!!! note "Subclassing is what types it"
+    `Handler.__init__` carries the annotations, so `self.req`, `self.res` and `self.ctx` autocomplete in your editor without you writing any. Naming the schema, as in `class CreateOrder(Handler[Order])`, types `self.req.data` the same way `Request[Order]` does for a function.
+
+    Do not override `__init__`: Heaven constructs the instance with exactly `(req, res, ctx)`. Per-request setup belongs at the top of the method.
+
+Anything wrong with the string is raised at registration, not on the first request that reaches the route: a class that is not a `Handler` subclass, a method that does not exist or is not callable, or a spec missing its module path or method name all raise `HandlerError` while the app is still booting.
+
 ## Application lifecycle
 
 Run code when the server boots and when it shuts down. Both callbacks receive the **app**, not a request.

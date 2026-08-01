@@ -106,9 +106,13 @@ def routes(app_path: Optional[str] = None):
         # Iterate over all methods in cache
         for method, paths in routes_obj.cache.items():
             for path, handler in paths.items():
+                # the registered object knows the name to display: a class handler
+                # is called Orders#index, while unwrapping it would only find index
                 original = _deep_unwrap(handler)
                 handler_name = ""
-                if hasattr(original, '__name__'):
+                if hasattr(handler, '__name__'):
+                    handler_name = f" ({handler.__name__})"
+                elif hasattr(original, '__name__'):
                     handler_name = f" ({original.__name__})"
                 elif isinstance(handler, str):
                     handler_name = f" ({handler})"
@@ -195,7 +199,9 @@ def handlers(target_path: Optional[str] = None, app_path: Optional[str] = None):
             for method, paths in routes_obj.cache.items():
                 for path, handler in paths.items():
                     try:
-                        # Deeply follow breadcrumbs for accurate metadata
+                        # location comes from the unwrapped original, the name from
+                        # what was registered: unwrapping a class handler reaches
+                        # the method and would lose the class it belongs to
                         original = _deep_unwrap(handler)
                         src_file = inspect.getsourcefile(original)
                         if src_file:
@@ -204,7 +210,7 @@ def handlers(target_path: Optional[str] = None, app_path: Optional[str] = None):
                             loc = f"{file}:{line}"
                         else:
                             loc = "unknown"
-                        name = getattr(original, '__name__', str(original))
+                        name = getattr(handler, '__name__', None) or getattr(original, '__name__', str(original))
                     except:
                         loc = "unknown"
                         name = getattr(handler, '__name__', str(handler))

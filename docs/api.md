@@ -125,6 +125,24 @@ Internal registry for route schemas.
 
 ---
 
+## `heaven.handler`
+
+### `Handler`
+Base class for handlers registered as `'package.module.Class#method'`. Generic over the schema the route expects, so `class CreateOrder(Handler[Order])` types `self.req.data`.
+
+```python
+class Handler(Generic[T]):
+    def __init__(self, req: Request[T], res: Response, ctx: Context)
+```
+
+**Attributes:** `req`, `res`, `ctx`, the same three objects a function handler is passed.
+
+Heaven constructs one instance per request, so `self` is request scoped and is never shared between requests in flight; instance attributes do not persist across requests. Do not override `__init__`, since Heaven constructs the instance with exactly those three arguments. Methods may be sync or async, and hooks accept the same `Class#method` form.
+
+Registration resolves and validates the string eagerly, raising `HandlerError` at boot when the class is not a `Handler` subclass, when the method is missing or not callable, or when the spec omits the module path or method name. See [The Router](router.md#grouping-handlers-in-a-class).
+
+---
+
 ## `heaven.request`
 
 ### `Request`

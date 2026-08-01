@@ -63,6 +63,20 @@ heaven handlers                # every handler and its file location
 heaven handlers /api/users     # the source of one endpoint, in your terminal
 ```
 
+Handlers registered as [`Class#method`](router.md#grouping-handlers-in-a-class) are listed under that name, and located at the method you wrote rather than inside Heaven:
+
+```
+┏━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Method ┃ Path        ┃ Handler      ┃ Location                ┃
+┡━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ GET    │ /health     │ health       │ handlers_fn.py:1        │
+│ GET    │ /orders     │ Orders#index │ controllers/orders.py:5 │
+│ GET    │ /orders/:id │ Orders#show  │ controllers/orders.py:9 │
+└────────┴─────────────┴──────────────┴─────────────────────────┘
+```
+
+`heaven handlers /orders` prints the body of `Orders.index` itself, so a class handler is as inspectable as a function one.
+
 ## `schema` — export OpenAPI
 
 ```bash

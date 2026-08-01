@@ -5,6 +5,7 @@ entrypoint rather than Earth, because some of the behaviour (HEAD bodies, the er
 page) only exists in Router.__call__.
 """
 import asyncio
+import inspect
 import os
 import shutil
 import tempfile
@@ -14,10 +15,13 @@ from typing import TypedDict
 from unittest import IsolatedAsyncioTestCase
 from uuid import UUID
 
+from orjson import loads
+
 from heaven import App
-from heaven.errors import UrlError
+from heaven.errors import HandlerError, UrlError
 from heaven.form import File
 from heaven.request import Request
+from tests import controllers
 
 
 def _scope(method, path, query=b''):
@@ -1060,6 +1064,120 @@ class HeaderSemanticsTest(IsolatedAsyncioTestCase):
         app.GET('/h', handler)
         _, headers = await drive_headers(app, 'GET', '/h')
         self.assertEqual(self._named(headers, b'vary'), [b'Origin, Accept'])
+
+
+class HandlerClassTest(IsolatedAsyncioTestCase):
+    """`'package.module.Class#method'` registers a method on a heaven.Handler
+    subclass. Heaven builds one instance per request, so `self` is request scoped."""
+
+    async def test_an_async_method_answers_a_request(self):
+        app = App()
+        app.BEFORE('/orders', lambda q, s, c: setattr(c, 'who', 'hooked'))
+        app.GET('/orders', 'tests.controllers.Orders#index')
+        status, _, body = await drive(app, 'GET', '/orders')
+        self.assertEqual(status, 200)
+        self.assertEqual(loads(body), {'route': '/orders', 'who': 'hooked'})
+
+    async def test_a_sync_method_answers_a_request(self):
+        app = App()
+        app.GET('/orders/:id', 'tests.controllers.Orders#show')
+        _, _, body = await drive(app, 'GET', '/orders/7')
+        self.assertEqual(body, b'order 7')
+
+    async def test_every_request_gets_its_own_instance(self):
+        """The tempting implementation keeps one instance and rebinds req/res per
+        request. Two requests in flight would then share `self`, and whichever
+        awaits first would resume holding the other's state."""
+        controllers.Interleaved.reset()
+        app = App()
+        app.GET('/slow', 'tests.controllers.Interleaved#slow')
+
+        first, second = await asyncio.gather(
+            drive(app, 'GET', '/slow', query=b'n=1'),
+            drive(app, 'GET', '/slow', query=b'n=2'),
+        )
+
+        self.assertEqual(first[2], b'1')
+        self.assertEqual(second[2], b'2')
+        self.assertEqual(len(set(controllers.Interleaved.seen)), 2)
+
+    async def test_a_class_handler_can_stream(self):
+        app = App()
+        app.POST('/upload', 'tests.controllers.Orders#upload', stream=True)
+        status, body = await drive_chunked(app, 'POST', '/upload', b'z' * (64 * 1024))
+        self.assertEqual(status, 200)
+        self.assertEqual(body, str(64 * 1024).encode())
+
+    async def test_a_schema_validates_into_a_class_handler(self):
+        app = App()
+        app.schema.POST('/orders', expects=controllers.Order)
+        app.POST('/orders', 'tests.controllers.Typed#create')
+        _, _, body = await drive(app, 'POST', '/orders', body=b'{"reference":"abc"}')
+        self.assertEqual(loads(body), {'reference': 'abc'})
+
+    async def test_hooks_can_be_class_methods_too(self):
+        app = App()
+        app.BEFORE('/orders', 'tests.controllers.Guard#before')
+        app.GET('/orders', 'tests.controllers.Orders#index')
+        _, _, body = await drive(app, 'GET', '/orders')
+        self.assertEqual(loads(body)['who'], 'guarded')
+
+    def test_the_cli_reports_the_class_and_the_real_source(self):
+        """`heaven routes` and `heaven handlers` name the handler from what was
+        registered and locate it by unwrapping. Unwrapping for the name too would
+        reach the bare method and drop the class it belongs to."""
+        from heaven.cli import _deep_unwrap
+
+        app = App()
+        app.GET('/orders', 'tests.controllers.Orders#index')
+        handler = app.subdomains['www'].cache['GET']['/orders']
+
+        self.assertEqual(handler.__name__, 'Orders#index')
+        self.assertEqual(handler.__doc__, 'List the orders.')
+
+        original = _deep_unwrap(handler)
+        self.assertIs(original, controllers.Orders.index)
+        self.assertTrue(inspect.getsourcefile(original).endswith('controllers.py'))
+        self.assertIn('async def index', inspect.getsource(original))
+
+    def test_a_class_that_is_not_a_handler_is_refused_at_registration(self):
+        with self.assertRaises(HandlerError) as caught:
+            App().GET('/x', 'tests.controllers.NotAHandler#index')
+        self.assertIn('subclass of heaven.Handler', str(caught.exception))
+
+    def test_a_missing_method_is_refused_at_registration(self):
+        with self.assertRaises(HandlerError) as caught:
+            App().GET('/x', 'tests.controllers.Orders#nope')
+        self.assertIn('no method "nope"', str(caught.exception))
+
+    def test_an_attribute_that_is_not_callable_is_refused(self):
+        with self.assertRaises(HandlerError) as caught:
+            App().GET('/x', 'tests.controllers.Orders#not_a_method')
+        self.assertIn('not callable', str(caught.exception))
+
+    def test_a_spec_without_a_module_path_is_refused(self):
+        with self.assertRaises(HandlerError) as caught:
+            App().GET('/x', 'Orders#index')
+        self.assertIn('needs the module path', str(caught.exception))
+
+    def test_a_spec_without_a_method_is_refused(self):
+        with self.assertRaises(HandlerError) as caught:
+            App().GET('/x', 'tests.controllers.Orders#')
+        self.assertIn('names no method', str(caught.exception))
+
+    def test_a_missing_class_is_refused_at_registration(self):
+        with self.assertRaises(HandlerError) as caught:
+            App().GET('/x', 'tests.controllers.Absent#index')
+        self.assertIn('no class "Absent"', str(caught.exception))
+
+    async def test_function_handlers_are_unaffected(self):
+        app = App()
+        app.GET('/fn', lambda q, s, c: setattr(s, 'body', b'fn'))
+        app.GET('/str', 'tests.controllers.plain')
+        _, _, body = await drive(app, 'GET', '/fn')
+        self.assertEqual(body, b'fn')
+        _, _, body = await drive(app, 'GET', '/str')
+        self.assertEqual(body, b'plain')
 
 
 class OpenApiPathTest(IsolatedAsyncioTestCase):

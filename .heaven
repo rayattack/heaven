@@ -68,6 +68,46 @@ async def health(req, res, ctx):
 app.GET("/health", health)
 ```
 
+### Class Handlers
+
+`"module.path.Class#method"` registers a method rather than a function. The class
+must subclass `heaven.Handler`; the `#` separates the class from the method:
+
+```python
+# controllers/orders.py
+from heaven import Handler
+
+class Orders(Handler):
+    async def index(self):
+        self.res.body = await self.req.app.peek("db").orders()
+
+    def show(self):                      # sync methods work too
+        self.res.body = f'order {self.req.params.get("id")}'
+```
+
+```python
+app.GET("/orders", "controllers.orders.Orders#index")
+app.GET("/orders/:id", "controllers.orders.Orders#show")
+```
+
+`self.req`, `self.res` and `self.ctx` are the same three objects a function
+handler receives, so both styles are one contract written two ways; hooks,
+streaming, schemas and subdomains behave identically. `Handler.__init__` carries
+the type annotations, so subclasses get IDE autocomplete without annotating
+anything, and `class CreateOrder(Handler[Order])` types `self.req.data` the way
+`Request[Order]` does for functions.
+
+Heaven constructs **one instance per request**, so `self` is request scoped and
+two requests in flight never share it. Instance attributes therefore do not
+persist across requests: shared state belongs on `app.keep()`, per-request state
+on `self` or `ctx`. Do not override `__init__`, since heaven calls
+`Class(req, res, ctx)`; per-request setup goes at the top of the method.
+
+Registration validates eagerly and raises `heaven.errors.HandlerError` at boot
+(not on the first matching request) when the class is not a `Handler` subclass,
+the method is missing or not callable, or the string omits the module path or the
+method name.
+
 ### Handler Signature
 
 Every handler receives exactly 3 arguments:
@@ -1287,10 +1327,11 @@ from heaven import Pytastic, PytasticError, ValidationError
 ### Error classes:
 
 ```python
-from heaven.errors import AbortException, SubdomainError, UrlError, UrlDuplicateError
+from heaven.errors import AbortException, HandlerError, SubdomainError, UrlError, UrlDuplicateError
 ```
 
 - `AbortException` - raised internally when `res.abort()` is called
+- `HandlerError` - raised at registration for a bad `"module.Class#method"` handler
 - `SubdomainError` - raised for subdomain configuration errors
 - `UrlError` - raised when a route doesn't start with `/`
 - `UrlDuplicateError` - raised when registering a duplicate route

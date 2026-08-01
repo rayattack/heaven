@@ -3,7 +3,7 @@ from collections import deque
 from functools import wraps
 from http import HTTPStatus
 from importlib import import_module
-from inspect import iscoroutinefunction
+from inspect import isclass, iscoroutinefunction
 from os import path, getcwd
 from typing import Any, Callable, Tuple, Union, overload, TypeVar, Generic
 
@@ -53,7 +53,8 @@ from .utils import CONVERTERS, parameter_parts, preprocessor
 from .request import Request
 from .response import Response
 from .context import Context, Look, Key
-from .errors import AbortException, ParameterError, SubdomainError, UrlDuplicateError, UrlError
+from .handler import Handler as RequestHandler
+from .errors import AbortException, HandlerError, ParameterError, SubdomainError, UrlDuplicateError, UrlError
 
 methods = ['get', 'post', 'put', 'delete', 'connect', 'head', 'options', 'patch']
 
@@ -141,7 +142,52 @@ def _openapi_path(route: str) -> Tuple[str, list]:
     return SEPARATOR.join(segments), parameters
 
 
+def _class_to_function_handler(spec: str):
+    """Resolve `'package.module.Class#method'` into a callable of the usual
+    `(req, res, ctx)` shape. Everything that can be checked is checked here, at
+    registration, so a broken handler fails at boot rather than on a request."""
+    target, _, name = spec.partition('#')
+    if '.' not in target:
+        raise HandlerError(f'"{spec}" needs the module path to its class, as in "package.module.Class#{name or "method"}"')
+    if not name:
+        raise HandlerError(f'"{spec}" names no method - write it as "{target}#method"')
+
+    module_name, class_name = target.rsplit('.', 1)
+    module = import_module(module_name)
+    try: klass = getattr(module, class_name)
+    except AttributeError: raise HandlerError(f'"{module_name}" has no class "{class_name}" for handler "{spec}"')
+
+    if not isclass(klass) or not issubclass(klass, RequestHandler):
+        raise HandlerError(f'"{target}" must be a subclass of heaven.Handler to be registered as "{spec}"')
+
+    method = getattr(klass, name, None)
+    if method is None:
+        raise HandlerError(f'"{class_name}" has no method "{name}" for handler "{spec}"')
+    if not callable(method):
+        raise HandlerError(f'"{spec}" is not callable - "{name}" is an attribute of "{class_name}", not a method')
+
+    # One instance per request, so `self` is request scoped. Binding the trio onto
+    # a single shared instance would let two requests in flight overwrite each
+    # other's `self.res` the moment either awaits.
+    if iscoroutinefunction(method):
+        async def delegate(req: Request, res: Response, ctx: Context):
+            return await getattr(klass(req, res, ctx), name)()
+    else:
+        def delegate(req: Request, res: Response, ctx: Context):
+            return getattr(klass(req, res, ctx), name)()
+
+    # __wrapped__ points tooling at the method the user actually wrote, so
+    # `heaven routes` reports their file rather than this module
+    delegate.__name__ = f'{class_name}#{name}'
+    delegate.__qualname__ = delegate.__name__
+    delegate.__doc__ = method.__doc__
+    delegate.__wrapped__ = method
+    return delegate
+
+
 def _string_to_function_handler(handler: Handler):
+    if isinstance(handler, str) and '#' in handler:
+        return _class_to_function_handler(handler)
     if isinstance(handler, str) and '.' in handler:
         module_name, function_name = handler.rsplit('.', 1)
         module = import_module(module_name)
