@@ -2,7 +2,7 @@
 
 **Heaven** is the absolute minimal, insanely fast [ASGI](https://asgi.readthedocs.io) web framework for Python purists. It doesn't just get out of your way; it vanishes, leaving you with raw performance and total control.
 
-> "Mastery in 10 minutes or less. No grey spots, just pure Python."
+> "Mastery in 30 minutes or less. No grey spots, just pure Python."
 
 <hr/>
 
@@ -10,7 +10,7 @@
 
 | Feature | Heaven | FastAPI | Flask | Django |
 | :--- | :---: | :---: | :---: | :---: |
-| **Learning Curve** | 10 Mins | High | Low | Extreme |
+| **Learning Curve** | 30 Mins | High | Low | Extreme |
 | **Performance** | ⚡⚡⚡ | ⚡⚡ | ⚡ | 🐢 |
 | **Boilerplate** | Zero | Medium | Low | Massive |
 | **Mastery** | Complete | Partial | High | Low |
@@ -39,7 +39,8 @@ app = App()
 # Centralized Auth / Pre-processing
 async def auth(req, res, ctx):
     if not req.headers.get('Authorization'):
-        res.abort('Unauthorized', status=401)
+        res.status = 401
+        res.abort('Unauthorized')
 
 app.BEFORE('/api/*', auth)
 

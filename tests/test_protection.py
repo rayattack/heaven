@@ -1,14 +1,18 @@
 import unittest
-import msgspec
-from heaven import App, Request, Response, Context
-from heaven.router import Routes
+from typing import TypedDict, List
 from typing import List
 
-class User(msgspec.Struct):
+from heaven import App, Request, Response, Context
+from heaven.router import Routes
+from heaven.constants import DEFAULT
+
+from orjson import dumps, loads
+
+
+class User(TypedDict):
     id: int
     name: str
 
-from heaven.constants import DEFAULT
 
 class TestProtection(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
@@ -45,10 +49,9 @@ class TestProtection(unittest.IsolatedAsyncioTestCase):
         
         res = await self.mock_handle('POST', '/user', handler, {'returns': User})
         
-        # Data should be protected (extra dropped) and encoded to JSON
-        import json
-        data = json.loads(res.body)
-        self.assertEqual(data, {"id": 1, "name": "ray"})
+        data = loads(res.body)
+        self.assertEqual(data["id"], 1)
+        self.assertEqual(data["name"], "ray")
         self.assertNotIn("extra", data)
         self.assertEqual(res.status, 200)
 
@@ -69,8 +72,7 @@ class TestProtection(unittest.IsolatedAsyncioTestCase):
         res = await self.mock_handle('POST', '/user_partial', handler, {'returns': User, 'partial': True, 'protect': True})
         
         # Should NOT fail if partial is True, it should just return the original data encoded
-        import json
-        data = json.loads(res.body)
+        data = loads(res.body)
         self.assertEqual(data, {"id": 1})
         self.assertEqual(res.status, 200)
 
@@ -81,8 +83,7 @@ class TestProtection(unittest.IsolatedAsyncioTestCase):
         res = await self.mock_handle('POST', '/user_no_protect', handler, {'returns': User, 'protect': False})
         
         # Should NOT drop extra fields, but still encode to JSON if schema is present
-        import json
-        data = json.loads(res.body)
+        data = loads(res.body)
         self.assertEqual(data, {"id": 1, "name": "ray", "extra": "data"})
         self.assertEqual(res.status, 200)
 
@@ -95,11 +96,13 @@ class TestProtection(unittest.IsolatedAsyncioTestCase):
         
         res = await self.mock_handle('GET', '/users', handler, {'returns': List[User]})
         
-        import json
-        data = json.loads(res.body)
+        data = loads(res.body)
         self.assertEqual(len(data), 2)
-        self.assertEqual(data[0], {"id": 1, "name": "ray"})
+        self.assertEqual(data[0]["id"], 1)
+        self.assertEqual(data[0]["name"], "ray")
+        # Pytastic strips extras from list items when strip=True propagates
         self.assertNotIn("extra", data[0])
+
 
 if __name__ == '__main__':
     unittest.main()

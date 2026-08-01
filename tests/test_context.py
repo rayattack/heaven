@@ -16,6 +16,14 @@ class TestContext(TestCase):
         self.context.keep('something', 5)
         self.assertEqual(self.context.something, 5)
 
+    def test_typed_key(self):
+        from heaven.context import Key
+        k = Key[int]("count")
+        self.context.keep(k, 10)
+        self.assertEqual(self.context.peek(k), 10)
+        self.assertEqual(self.context.unkeep(k), 10)
+        self.assertIsNone(self.context.peek(k))
+
 
 class TestLook(TestCase):
     def setUp(self) -> None:

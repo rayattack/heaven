@@ -1,17 +1,18 @@
-from datetime import datetime, date
-from typing import Any, TYPE_CHECKING
-from uuid import UUID
+from typing import Any, TYPE_CHECKING, Union, TypeVar, Generic
 from urllib.parse import parse_qs
 
 from heaven.form import Form
-from heaven.utils import Lookup
-import msgspec
+from heaven.utils import CONVERTERS, Lookup, boolean
+from orjson import dumps, loads
+from pytastic import Pytastic
+
 
 if TYPE_CHECKING:
     from heaven import Router
 
+T = TypeVar("T")
 
-class Request:
+class Request(Generic[T]):
     def __init__(self, scope, body, receive, metadata=None, application=None):
         self._application = application
         self._body = body
@@ -30,23 +31,29 @@ class Request:
         self._dirty = False
         self._queried = False
         self._mounted_from_application = None
+        self._streaming = False
+        self._streamed = False
 
     @property
     def json(self):
         """Returns the json body of the request"""
-        if not self._body: return None
-        return msgspec.json.decode(self._body)
+        body = self.body
+        if not body: return None
+        return loads(body)
 
     @property
-    def data(self):
+    def data(self) -> T:
         """Returns the validated data from the request body as per schema definition"""
         if self._data is not None: return self._data
-        if not self._body: return None
+        if not self._body: return None  # type: ignore
         
         # If no schema was provided, behavior is same as req.json
         if not self._schema: return self.json
         
-        self._data = msgspec.json.decode(self._body, type=self._schema)
+        # Use the app's shared pytastic instance if available
+        if self.app and hasattr(self.app, '_pytastic'):
+            self._data = self.app._pytastic.validate(self._schema, self.json)
+        else: self._data = Pytastic().validate(self._schema, self.json)
         return self._data
 
     def _parse_qs(self):
@@ -78,6 +85,11 @@ class Request:
 
     @property
     def body(self):
+        if self._streaming:
+            raise RuntimeError(
+                'This route was registered with stream=True so its body was never '
+                'buffered. Read it with `async for chunk in req.stream():` instead.'
+            )
         return self._body
 
     @property
@@ -97,7 +109,13 @@ class Request:
         return self._cookies
 
     @property
-    def form(self) -> "Form":
+    def form(self) -> Union["Form", None]:
+        """The parsed form, or None when the request has no form content type.
+        On a route registered with stream=True nothing is buffered ahead of the
+        handler, so the form starts unparsed: get it with `form = await req.form`,
+        which reads the body incrementally and spills large file parts to disk.
+        Awaiting is harmless on a buffered route, where the form is parsed already.
+        """
         content_type = self.headers.get("content-type", "")
         if not ("multipart/form-data" in content_type or "application/x-www-form-urlencoded" in content_type):
             return None
@@ -112,7 +130,9 @@ class Request:
         if not self._headers:
             self._headers = {}
             for header in self._scope.get("headers"):
-                self._headers[header[0]] = header[1]
+                key = header[0].decode() if isinstance(header[0], bytes) else header[0]
+                value = header[1].decode() if isinstance(header[1], bytes) else header[1]
+                self._headers[key] = value
         return self._headers
 
     @property
@@ -132,19 +152,15 @@ class Request:
     def qh(self, val: str):
         '''Here we process queryhints so heaven can try to coerce query string values'''
         if self.__queryhint: raise ValueError('Querystring metadata already set')
-        booleans = {'false': False, 'true': True, '1': True, 0: False}
-        def boolean(v: str) -> bool:
-            if not isinstance(v, str): return False
-            return booleans.get(v.lower())
-        kinds = {
-            'int': int,
-            'str': str,
-            'float': float,
-            'datetime': datetime.fromisoformat,
-            'date': date.fromisoformat,
-            'uuid': UUID,
-            'bool': boolean
-        }
+
+        # Query values keep their historical lenient boolean, where an unreadable
+        # value reads as False. Route segments use the strict parse from CONVERTERS
+        # because there a failure means the route simply does not match.
+        def lenient_boolean(v: str) -> bool:
+            try: return boolean(v)
+            except ValueError: return False
+
+        kinds = {**CONVERTERS, 'bool': lenient_boolean}
         for pair in val.split('&'):
             try: k, v = pair.split(':')
             except: continue
@@ -211,10 +227,6 @@ class Request:
         return self._scope.get("query_string", "")
 
     @property
-    def scheme(self):
-        return self._scope.get("scheme")
-
-    @property
     def subdomain(self):
         return self._subdomain
 
@@ -223,6 +235,32 @@ class Request:
         return self._scope.get("path")
 
     async def stream(self):
-        """TODO: Revisit and implement with appropriate testing"""
-        return await self._receive()
+        """Yield the request body chunk by chunk, so a large upload never has to sit
+        in memory. Available on routes registered with `stream=True`; on any other
+        route the body has already been read and is waiting on `req.body`.
+
+            app.POST('/upload', save, stream=True)
+
+            async def save(req, res, ctx):
+                async with async_open(target, 'wb') as f:
+                    async for chunk in req.stream():
+                        await f.write(chunk)
+
+        The body arrives once and is not retained, so it can only be streamed once.
+        """
+        if not self._streaming:
+            raise RuntimeError(
+                'Register this route with stream=True to read its body as a stream. '
+                'Without it the body is buffered already and available as req.body.'
+            )
+        if self._streamed:
+            raise RuntimeError('The request body has already been streamed')
+        self._streamed = True
+
+        more = True
+        while more:
+            message = await self._receive()
+            chunk = message.get('body', b'')
+            if chunk: yield chunk
+            more = message.get('more_body', False)
 

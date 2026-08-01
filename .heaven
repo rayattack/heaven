@@ -1,0 +1,1386 @@
+# Heaven Web Framework - LLM Reference
+
+Heaven is an async Python web framework built on ASGI. It provides routing, middleware (BEFORE/AFTER hooks), schema validation via pytastic, subdomain management, WebSocket support, CORS, sessions, templating, file serving, streaming, and a built-in test client (Earth).
+
+## 1. Installation & Startup
+
+```python
+# main.py
+from heaven import App
+
+app = App()
+
+# String discovery (preferred) - resolves to handlers.home.hello
+app.GET("/", "handlers.home.hello")
+
+# Run with uvicorn:
+# uvicorn main:app --host 0.0.0.0 --port 8000
+# Or use:
+app.listen(host="localhost", port="8701")
+```
+
+```python
+# handlers/home.py
+async def hello(req, res, ctx):
+    res.body = "Hello, World!"
+    res.status = 200
+```
+
+App is an alias for Router. Application and Server are also aliases. All are interchangeable.
+
+```python
+from heaven import App, Application, Router, Server
+# App == Application == Router == Server
+```
+
+### App Constructor
+
+```python
+app = App(
+    protect_output=True,     # Strip extra fields from responses by default
+    allow_partials=False,    # Allow partial responses (missing required fields) by default
+    fail_on_output=True,     # Return 500 on output validation failure (vs silent fallback)
+    debug=False,             # Guardian Angel error pages; development only
+    monitor=None,            # Event loop lag monitoring interval (seconds), None to disable
+)
+```
+
+## 2. Handler Registration
+
+Heaven's preferred way to register handlers is via **string discovery**. The string `"module.path.function_name"` is resolved at registration time via Python's import system:
+
+```python
+# Resolves to: from handlers.users import list_users
+app.GET("/users", "handlers.users.list_users")
+
+# Resolves to: from api.v1.orders import create_order
+app.POST("/orders", "api.v1.orders.create_order")
+```
+
+The string is split at the last `.` — everything before is the module path, the last segment is the function name.
+
+You can also pass functions directly when co-locating handlers:
+
+```python
+async def health(req, res, ctx):
+    res.body = "OK"
+
+app.GET("/health", health)
+```
+
+### Handler Signature
+
+Every handler receives exactly 3 arguments:
+
+```python
+from heaven import Request, Response, Context
+
+async def handler(req: Request, res: Response, ctx: Context):
+    res.body = "OK"
+    res.status = 200
+```
+
+Handlers can be sync or async. Heaven supports both.
+
+### Type-Safe Handlers with Generics
+
+`Request` is `Generic[T]`, so `req.data` can be typed via annotation. The generic parameter should match the `expects` schema:
+
+```python
+from heaven import Request, Response, Context
+
+class User(Schema):
+    name: str
+    email: str
+
+app.schema.POST("/users", expects=User)
+
+async def create_user(req: Request[User], res: Response, ctx: Context):
+    user = req.data  # IDE infers this as User, autocomplete works
+    print(user.name)
+
+app.POST("/users", create_user)
+```
+
+This is a convention — Heaven doesn't enforce the match at runtime, but type checkers (mypy, pyright) will.
+
+## 3. Routing
+
+### HTTP Methods
+
+```python
+app.GET("/users", "handlers.users.list_users")
+app.POST("/users", "handlers.users.create_user")
+app.PUT("/users/:id", "handlers.users.update_user")
+app.PATCH("/users/:id", "handlers.users.patch_user")
+app.DELETE("/users/:id", "handlers.users.delete_user")
+app.HEAD("/users", "handlers.users.head")
+app.OPTIONS("/users", "handlers.users.options")
+app.CONNECT("/users", "handlers.users.connect")
+app.TRACE("/users", "handlers.users.trace")
+
+# Register handler for ALL HTTP methods on a route
+# (CONNECT, DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT, TRACE):
+app.HTTP("/health", "handlers.health.check")
+```
+
+A HEAD request is answered by the matching GET route automatically, returning the
+same status and headers with an empty body, so `app.HEAD()` is only needed when
+HEAD requires its own handler.
+
+A request whose path matches a route registered under a different method returns
+405 with an `Allow` header. A path matching no route returns 404.
+
+### Route Parameters
+
+Use `:param` syntax. Parameters are accessible via `req.params`:
+
+```python
+app.GET("/users/:id/posts/:post_id", "handlers.posts.get_post")
+```
+
+```python
+# handlers/posts.py
+async def get_post(req, res, ctx):
+    user_id = req.params.get("id")      # string
+    post_id = req.params.get("post_id")  # string
+    res.body = f"User {user_id}, Post {post_id}"
+```
+
+#### Typed Route Parameters
+
+Parameters can be type-coerced using `:param:type` syntax. Supported types are the
+same seven that query hints accept: `bool`, `date`, `datetime`, `float`, `int`,
+`str`, `uuid`. `date` and `datetime` parse ISO 8601; `bool` reads
+`true`/`false`/`1`/`0`.
+
+```python
+app.GET("/users/:id:int/posts/:post_id:uuid", "handlers.posts.get_post")
+app.GET("/reports/:day:date", "handlers.reports.for_day")
+```
+
+```python
+# handlers/posts.py
+async def get_post(req, res, ctx):
+    user_id = req.params.get("id")       # int
+    post_id = req.params.get("post_id")  # UUID
+```
+
+A value that cannot be converted means the route does not match, so the request
+falls through to another route, a covering wildcard, or 404. A handler never
+receives an unconverted value for a segment that declared a type.
+
+An unknown type name raises `UrlError` when the route is registered, so
+`/users/:id:uuidd` fails at startup rather than silently handing back a string.
+
+### Wildcard Routes
+
+Use `*` to match any remaining path. The matched portion is in `req.params.get("*")`:
+
+```python
+app.GET("/files/*", "handlers.files.serve")
+```
+
+```python
+# handlers/files.py
+async def serve(req, res, ctx):
+    filepath = req.params.get("*")  # e.g. "docs/readme.md"
+```
+
+### Query String Hints (Queryhints)
+
+Heaven can auto-coerce query string values to Python types. Queryhints are defined as part of the route using `?key:type&key:type` syntax:
+
+Supported types: `int`, `str`, `float`, `datetime`, `date`, `uuid`, `bool`
+
+```python
+app.GET("/search?page:int&active:bool", "handlers.search.search")
+```
+
+```python
+# handlers/search.py
+async def search(req, res, ctx):
+    page = req.queries.get("page")      # int (auto-coerced)
+    active = req.queries.get("active")   # bool (auto-coerced)
+```
+
+## 4. Request Object
+
+### Properties
+
+| Property      | Type           | Description                                  |
+|---------------|----------------|----------------------------------------------|
+| `req.app`     | `Router`       | The application instance                     |
+| `req.body`    | `bytes`        | Raw request body                             |
+| `req.json`    | `dict/list`    | Parsed JSON body (via orjson)                |
+| `req.data`    | `T`            | Validated data (if schema is set, see below) |
+| `req.cookies` | `dict`         | Parsed cookies from Cookie header            |
+| `req.form`    | `Form`/`None`  | Parsed form data; `await req.form` on stream=True routes |
+| `req.headers` | `dict`         | Request headers                              |
+| `req.host`    | `str`          | Host header value                            |
+| `req.ip`      | `Lookup`       | Client IP (`req.ip.address`, `req.ip.port`)  |
+| `req.method`  | `str`          | HTTP method (`GET`, `POST`, etc.)            |
+| `req.params`  | `dict`         | Route parameters                             |
+| `req.queries` | `dict`         | Parsed query string parameters               |
+| `req.querystring` | `bytes/str`| Raw query string                             |
+| `req.route`   | `str`          | Matched route pattern                        |
+| `req.scheme`  | `str`          | Request scheme (`http`, `https`)             |
+| `req.server`  | `str`          | Server address (`host:port`)                 |
+| `req.subdomain` | `str`        | Resolved subdomain (or `www` for default)    |
+| `req.url`     | `str`          | Request path                                 |
+
+### req.data - Automatic Validation & Deserialization
+
+When a schema is registered for a route via `app.schema`, the request body is automatically validated and made available as `req.data`. This uses pytastic under the hood:
+
+```python
+# schemas.py
+from typing import TypedDict, Annotated
+
+class CreateUser(TypedDict):
+    name: Annotated[str, "min_len=2"]
+    email: Annotated[str, "format=email"]
+```
+
+```python
+# main.py
+from schemas import CreateUser
+
+app.schema.POST("/users", expects=CreateUser)
+app.POST("/users", "handlers.users.create_user")
+```
+
+```python
+# handlers/users.py
+async def create_user(req: Request[CreateUser], res: Response, ctx: Context):
+    # req.data is already validated - if validation fails,
+    # heaven automatically returns 422 before this handler runs
+    user = req.data       # IDE knows this is CreateUser
+    print(user["name"])   # guaranteed to be a string with len >= 2
+    print(user["email"])  # guaranteed to be a valid email
+    res.body = {"id": 1, **user}
+    res.status = 201
+```
+
+If no schema is set, `req.data` falls back to `req.json`. Use `Request[T]` generics to get IDE autocomplete on `req.data` (see Handler Signature section above).
+
+### Form Data
+
+```python
+async def upload(req, res, ctx):
+    form = req.form
+    username = form.get("username")           # string field
+    avatar = form.get("avatar")               # File object
+    if avatar:
+        print(avatar.filename)                # original filename
+        print(avatar.content_type)            # declared content type or None
+        print(avatar.size)                    # bytes received
+        print(avatar.content)                 # bytes content
+        avatar.save("/uploads/photo.png")     # chunked copy to a destination
+        avatar.file                           # file object positioned at 0
+
+    # Attribute access also works:
+    username = form.username
+
+    # Get all fields as a dict:
+    all_data = form.to_dict()
+```
+
+`req.form` is `None` when the request has no form content type. On a route
+registered with `stream=True` the form must be awaited instead: see the next
+section.
+
+### Request Body Size And Streaming Uploads
+
+A normal route buffers the whole body before hooks or the handler run, because
+`req.body`, `req.json` and `req.form` are plain properties. Two controls exist:
+
+```python
+app = App(max_body_size=10 * 1024 * 1024)   # 413 past 10MB
+```
+
+Past the limit nothing further is retained, so memory holds at the ceiling however
+much more is sent. The remainder is read and discarded rather than answered
+immediately, because responding mid-upload resets the connection and the client
+never sees the 413. `max_body_size` defaults to `None`, meaning no limit, and does
+not apply to streaming routes.
+
+```python
+app.POST("/upload", "handlers.files.receive", stream=True)
+```
+
+```python
+# handlers/files.py
+from aiofiles import open as async_open
+
+async def receive(req, res, ctx):
+    async with async_open("/var/lib/app/uploads/incoming.bin", "wb") as f:
+        async for chunk in req.stream():
+            await f.write(chunk)
+    res.body = {"ok": True}
+```
+
+`stream=True` is available on `POST`, `PUT` and `PATCH`. On such a route the body is
+never buffered, so peak memory is one chunk no matter how large the upload is, and
+`req.body`/`req.json`/`req.data` raise `RuntimeError` because there is nothing
+buffered to read. `req.stream()` raises on a non-streaming route for the mirror
+reason, and the body arrives once, so it can only be consumed once.
+
+`req.form` works on a streaming route but must be awaited: it parses the multipart
+or urlencoded body incrementally off the stream, so field values become available
+while file parts never sit in memory whole:
+
+```python
+app.POST("/upload", "handlers.files.receive", stream=True)
+
+# handlers/files.py
+async def receive(req, res, ctx):
+    form = await req.form                     # parses the body as it arrives
+    title = form.get("title")                 # fields work as usual
+    video = form.get("video")                 # File object
+    video.save("/var/lib/app/uploads/v.bin")  # chunked copy, never held whole
+    res.body = {"ok": True, "size": video.size}
+```
+
+Streamed file parts go to a spooled temporary file: in memory below 256KB, on disk
+above it, cleaned up automatically unless saved. `await req.form` on a buffered
+route is harmless (the form is parsed already), so the same handler works on both
+kinds of route. Reading fields on a streaming route without awaiting first raises
+`RuntimeError`, and `req.stream()` after `await req.form` raises because the body
+was already consumed. Ceilings are module constants in `heaven.form`, settable
+before serving: `FIELD_LIMIT` (1MB per field value), `SPOOL_LIMIT` (256KB spill
+threshold), `HEADERS_LIMIT` (16KB per part), `PARTS_LIMIT` (1000 parts). Breaking
+a ceiling, or a multipart body without its closing boundary, raises `ValueError`;
+the rest of the body is drained first so the client receives the error response
+instead of a connection reset.
+
+## 5. Response Object
+
+### Setting the Response Body
+
+```python
+async def handler(req, res, ctx):
+    res.body = "text"                    # str -> encoded to bytes
+    res.body = 42                        # int/float -> str -> bytes
+    res.body = {"key": "value"}          # dict -> auto-serialized to JSON
+    res.body = [1, 2, 3]                 # list -> auto-serialized to JSON
+    res.body = b"raw bytes"              # bytes -> sent as-is
+```
+
+### Setting Status
+
+```python
+res.status = 200
+res.status = 404
+
+# Or use HTTPStatus:
+from http import HTTPStatus
+res.status = HTTPStatus.CREATED          # 201
+```
+
+### Headers
+
+```python
+res.headers = "Content-Type", "application/json"
+res.headers = "X-Custom", "value"
+
+# Chaining with .header():
+res.header("X-One", "1").header("X-Two", "2")
+
+# Assigning a name the response already carries replaces it (case-insensitive,
+# last write wins), so each header goes out exactly once. Set-Cookie is the
+# exception and accumulates one line per cookie.
+res.headers = "content-type", "text/html"   # replaces the assignment above
+
+res.headers = "X-Custom", None              # removes the header
+res.headers = "Vary", ["Origin", "Accept"]  # comma-joined: Vary: Origin, Accept
+```
+
+### Cookies
+
+```python
+res.cookie("session_id", "abc123",
+    max_age=3600,
+    httponly=True,
+    secure=True,
+    samesite="Lax",
+    path="/",
+    domain=".example.com"
+)
+```
+
+Supported cookie options: `expires` (datetime), `secure` (bool), `httponly`/`http_only` (bool), `samesite`/`same_site` (str: "Strict"/"Lax"/"None"), `domain` (str), `path` (str), `partitioned` (bool), `max_age`/`maxage` (int).
+
+### Redirect
+
+```python
+res.redirect("/login")                   # 307 Temporary Redirect
+res.redirect("/new-url", permanent=True) # 308 Permanent Redirect
+```
+
+### Abort
+
+Abort stops further processing (skips remaining AFTER hooks):
+
+```python
+async def handler(req, res, ctx):
+    if not authorized:
+        res.status = 403
+        res.abort("Forbidden")
+        return
+```
+
+### Streaming
+
+```python
+async def handler(req, res, ctx):
+    async def generate():
+        for i in range(10):
+            yield f"chunk {i}\n".encode()
+
+    res.stream(generate(), content_type="text/plain", status=200)
+```
+
+### Server-Sent Events (SSE)
+
+When `sse=True`, each yielded item is wrapped in `data: ...\n\n` format. Dicts and lists are JSON-serialized automatically:
+
+```python
+async def handler(req, res, ctx):
+    async def events():
+        for i in range(5):
+            yield f"event {i}"           # sent as: data: event 0\n\n
+        yield {"count": 5}               # sent as: data: {"count":5}\n\n
+
+    res.stream(events(), sse=True)
+```
+
+### File Serving
+
+```python
+async def download(req, res, ctx):
+    res.file("/path/to/report.pdf", filename="report.pdf")
+```
+
+`res.file()` uses the path exactly as given. When any part of it comes from the
+request, pass `within=` to confine the read to a single directory:
+
+```python
+async def download(req, res, ctx):
+    res.file(req.params.get("name"), within="/var/lib/app/uploads")
+```
+
+`within` is a directory and may live anywhere the process can reach. Absolute
+values are used as given; relative ones resolve against the working directory.
+`filepath` may be relative to `within` or the full path to a file beneath it.
+Anything resolving outside returns 404, covering `..` segments, absolute paths
+pointing elsewhere, and symlinks leaving the tree. `app.ASSETS()` uses the same
+mechanism.
+
+### Deferred Tasks
+
+Run tasks after the response is sent. Deferred functions receive the app as their argument:
+
+```python
+async def handler(req, res, ctx):
+    res.body = "Accepted"
+    res.status = 202
+
+    async def send_email(app):
+        # runs after response is sent
+        await email_service.send(...)
+
+    res.defer(send_email)
+```
+
+### Templating (HTML Rendering)
+
+```python
+app.TEMPLATES("templates", relative_to=__file__)
+
+# Async rendering (default):
+async def page(req, res, ctx):
+    await res.render("index.html", title="Home", items=[1, 2, 3])
+
+# Sync rendering:
+app.TEMPLATES("templates", asynchronous=False)
+def page(req, res, ctx):
+    res.renders("index.html", title="Home")
+```
+
+Templates use Jinja2. The template receives `ctx`, `req`, `res`, and any extra kwargs.
+
+### String Interpolation
+
+```python
+async def handler(req, res, ctx):
+    html = await res.interpolate("email_template.html", user=user_data)
+    # html is a string, not set on res.body
+```
+
+### res.out() Shorthand
+
+```python
+res.out(200, {"message": "OK"})
+# Equivalent to:
+# res.status = 200
+# res.body = {"message": "OK"}
+
+# With optional headers:
+res.out(200, {"message": "OK"}, ("X-Custom", "value"))
+```
+
+## 6. Context Object
+
+Context is per-request scoped storage shared across handlers and middleware:
+
+```python
+async def auth_middleware(req, res, ctx):
+    ctx.user = {"id": 1, "role": "admin"}     # dot notation
+    ctx.keep("db_result", some_data)           # .keep() method
+
+async def handler(req, res, ctx):
+    user = ctx.user                            # dot notation
+    data = ctx.peek("db_result")               # .peek() method
+    ctx.unkeep("db_result")                    # remove
+```
+
+### Typed Keys
+
+For type-safe context access:
+
+```python
+from heaven import Key
+
+user_key = Key[dict]("current_user")
+
+async def middleware(req, res, ctx):
+    ctx.keep(user_key, {"id": 1})
+
+async def handler(req, res, ctx):
+    user = ctx.peek(user_key)  # IDE knows this is dict
+```
+
+### Reserved Keys
+
+These keys cannot be set via dot-notation on ctx: `session`, `app`, `request`, `response`, `headers`, `cookies`.
+
+```python
+ctx.session = {"user": 1}            # raises AttributeError
+ctx.keep("session", {"user": 1})     # works fine (used internally by sessions)
+```
+
+## 7. Application-Level Storage
+
+Store data that persists across all requests:
+
+```python
+app.keep("db_pool", pool)
+pool = app.peek("db_pool")
+app.unkeep("db_pool")
+
+# Also accessible via shorthand (dot-notation access via Look):
+app.keep("config", {"debug": True})
+print(app._.config.debug)  # True
+```
+
+Typed keys work the same way:
+
+```python
+db_key = Key[Pool]("database")
+app.keep(db_key, pool)
+pool = app.peek(db_key)   # IDE knows type is Pool
+```
+
+## 8. Middleware (BEFORE / AFTER Hooks)
+
+### BEFORE Hooks
+
+Run before the handler. Same signature as handlers:
+
+```python
+app.BEFORE("/users/*", "middleware.logging.log_request")
+```
+
+```python
+# middleware/logging.py
+async def log_request(req, res, ctx):
+    print(f"{req.method} {req.url}")
+```
+
+You can also pass inline functions:
+
+### AFTER Hooks
+
+Run after the handler:
+
+```python
+async def add_headers(req, res, ctx):
+    res.headers = "X-Powered-By", "Heaven"
+
+app.AFTER("/*", add_headers)
+```
+
+### Global Middleware
+
+Use `/*` to match all routes:
+
+```python
+app.BEFORE("/*", "middleware.auth.check")
+app.AFTER("/*", "middleware.logging.log_response")
+```
+
+### Hook Execution Order
+
+BEFORE hooks run from the broadest matching pattern inward; AFTER hooks unwind in
+the mirror order. For `GET /users/7` matching `/users/:id`:
+
+1. BEFORE `/*`
+2. BEFORE `/users/*`
+3. BEFORE `/users/:id`
+4. Handler
+5. AFTER `/users/:id`
+6. AFTER `/users/*`
+7. AFTER `/*`
+
+Within a single pattern, hooks run in registration order. A hook registered under
+several matching patterns runs once, at the earliest position it appears in.
+
+If a BEFORE hook calls `res.abort()`, the handler and subsequent hooks are skipped.
+
+### Method-Scoped Hooks
+
+Pass `methods=` to limit a hook to certain verbs. The scope belongs to the
+registration, so the same function can be registered elsewhere with a different
+scope, or none at all:
+
+```python
+app.BEFORE("/orders", validate, methods=["POST", "PUT"])
+app.BEFORE("/audit", validate)   # unscoped here; runs for every method
+```
+
+## 9. Lifecycle Events
+
+### Startup / Shutdown
+
+```python
+async def on_startup(app):
+    app.keep("db", await create_pool())
+    print("App started")
+
+async def on_shutdown(app):
+    pool = app.peek("db")
+    await pool.close()
+    print("App stopped")
+
+app.ONCE("startup", on_startup)
+app.ONCE("shutdown", on_shutdown)
+
+# String discovery works here too:
+app.ONCE("startup", "lifecycle.setup.on_startup")
+app.ONCE("shutdown", "lifecycle.setup.on_shutdown")
+
+# Shorthand (defaults to startup):
+app.ONCE(on_startup)
+# Or:
+app.ON(on_startup)
+```
+
+### Daemons
+
+Long-running background tasks that repeat on an interval. The daemon function receives the app and returns the number of seconds to sleep before the next invocation. Return `None` or `False` to stop the daemon:
+
+```python
+async def background_worker(app):
+    # do periodic work
+    await check_for_updates()
+    return 60  # run again in 60 seconds
+
+app.daemons = background_worker
+
+# Sync daemons also work (run in thread pool):
+def sync_worker(app):
+    cleanup_temp_files()
+    return 300  # run again in 5 minutes
+
+app.daemons = sync_worker
+```
+
+A daemon is bound to the app it was registered on. Mounting carries daemons onto
+the parent, which starts them on its own lifespan, but each one is still handed the
+app it came from, so `app.peek()` inside a child's daemon reads the child's buckets
+rather than the parent's. The same holds for `ONCE` startup and shutdown callbacks.
+
+## 10. Schema Validation & API Docs
+
+Heaven uses pytastic for schema validation. See the `.pytastic` file for full pytastic API reference.
+
+### Schema Registration
+
+```python
+from typing import TypedDict, Annotated, List
+
+class CreateUser(TypedDict):
+    name: Annotated[str, "min_len=2; max_len=50"]
+    email: Annotated[str, "format=email"]
+    age: Annotated[int, "min=0; max=150"]
+
+class UserResponse(TypedDict):
+    id: int
+    name: str
+    email: str
+
+# Register input and output schemas:
+app.schema.POST("/users", expects=CreateUser, returns=UserResponse)
+app.POST("/users", "handlers.users.create_user")
+
+# Method-specific shortcuts:
+app.schema.GET("/users", returns=List[UserResponse])
+app.GET("/users", "handlers.users.list_users")
+
+app.schema.PUT("/users/:id", expects=CreateUser, returns=UserResponse)
+app.PUT("/users/:id", "handlers.users.update_user")
+
+app.schema.DELETE("/users/:id")
+app.DELETE("/users/:id", "handlers.users.delete_user")
+
+app.schema.PATCH("/users/:id", expects=CreateUser)
+app.PATCH("/users/:id", "handlers.users.patch_user")
+```
+
+### How It Works
+
+When `expects` is defined, heaven automatically:
+1. Registers a BEFORE hook that validates `req.json` against the schema
+2. Stores the validated result in `req._data` (accessible via `req.data`)
+3. Returns 422 with the validation error if validation fails
+
+When `returns` is defined, heaven automatically:
+1. Registers an AFTER hook that processes `res.body`
+2. If `protect=True` (default), strips extra fields not in the schema using `pytastic.validate(..., strip=True)`
+3. If `partial=True`, allows missing required fields using `pytastic.validate(..., partial=True)`
+4. Serializes the result to JSON
+
+### protect and partial
+
+These control output validation behavior:
+
+| Setting | Default | Effect |
+|---------|---------|--------|
+| `protect` | `True` (from `protect_output`) | Strips fields from response not defined in schema |
+| `partial` | `False` (from `allow_partials`) | Allows response to omit required schema fields |
+| `strict` | `True` (from `fail_on_output`) | Returns 500 on output validation error vs silent fallback |
+
+```python
+# Per-route override:
+app.schema.POST("/users", returns=UserResponse, protect=True, partial=True, strict=False)
+
+# App-level defaults:
+app = App(protect_output=True, allow_partials=False, fail_on_output=True)
+```
+
+Example of protect stripping sensitive data:
+
+```python
+class PublicUser(TypedDict):
+    id: int
+    name: str
+
+app.schema.GET("/users/:id", returns=PublicUser)
+app.GET("/users/:id", "handlers.users.get_user")
+```
+
+```python
+# handlers/users.py
+async def get_user(req, res, ctx):
+    # Database returns full record including password_hash
+    res.body = {"id": 1, "name": "Ray", "password_hash": "abc123", "internal_note": "admin"}
+    # protect=True strips password_hash and internal_note automatically
+    # Client receives: {"id": 1, "name": "Ray"}
+```
+
+Example of partial allowing subset responses:
+
+```python
+class FullUser(TypedDict):
+    id: int
+    name: str
+    email: str
+    bio: str
+
+app.schema.GET("/users", returns=List[FullUser], partial=True)
+app.GET("/users", "handlers.users.list_users")
+```
+
+```python
+# handlers/users.py
+async def list_users(req, res, ctx):
+    # Only returning summary data:
+    res.body = [{"id": 1, "name": "Ray"}, {"id": 2, "name": "Jane"}]
+    # partial=True: missing email & bio won't cause validation error
+```
+
+### Schema Metadata for API Docs
+
+```python
+app.schema.POST("/users",
+    expects=CreateUser,
+    returns=UserResponse,
+    summary="Create a new user",
+    description="Creates a user account with validated input",
+    group="Users"          # OpenAPI tag
+)
+```
+
+### OpenAPI & Interactive Docs
+
+```python
+app.DOCS("/docs", title="My API", version="1.0.0")
+# Serves:
+#   GET /docs          -> Scalar interactive docs UI
+#   GET /docs/openapi.json -> OpenAPI 3.1.0 JSON spec
+```
+
+### General Schema Registration
+
+```python
+app.schema.add("POST", "/users",
+    expects=CreateUser,
+    returns=UserResponse,
+    summary="Create user",
+    group="Users"
+)
+```
+
+## 11. CORS
+
+```python
+app.cors(
+    origins=["http://localhost:3000", "https://myapp.com"],
+    methods=["GET", "POST", "PUT", "DELETE"],
+    headers=["Content-Type", "Authorization"],
+    credentials=True,
+    max_age=86400,
+)
+```
+
+Or with a custom handler:
+
+```python
+async def custom_cors(req, res, ctx):
+    res.headers = "Access-Control-Allow-Origin", req.headers.get("origin", "*")
+
+app.cors(custom_cors)
+```
+
+### Subdomain CORS
+
+By default `app.cors()` only applies to the `www` (default) subdomain. Use `subdomains` to target specific subdomains, or call `cors()` directly on a subdomain proxy:
+
+```python
+api = app.subdomain("api")
+admin = app.subdomain("admin")
+
+# Apply to specific subdomains (must be registered first):
+app.cors(origins=["https://myapp.com"], subdomains=["www", "api", "admin"])
+
+# Or call cors() on the subdomain proxy directly:
+api.cors(origins=["https://myapp.com"])
+```
+
+**Note:** `cors()` automatically registers an `OPTIONS /*` catch-all route on each targeted subdomain. This ensures CORS preflight requests are handled correctly without needing to manually register OPTIONS routes.
+
+### Custom CORS with Subdomains
+
+A custom handler function can also be scoped to specific subdomains:
+
+```python
+async def my_cors(req, res, ctx):
+    origin = req.headers.get("origin", "")
+    res.headers = "Access-Control-Allow-Origin", origin
+    res.headers = "Access-Control-Allow-Credentials", "true"
+    res.headers = "Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS"
+    res.headers = "Access-Control-Allow-Headers", "Content-Type, Authorization"
+    if req.method == "OPTIONS":
+        res.status = 204
+        res.body = b""
+        res.abort(b"")
+
+app.cors(my_cors, subdomains=["api"])
+```
+
+When using a custom handler, you are responsible for handling OPTIONS preflight (including `res.abort()`) yourself. The auto-registered `OPTIONS /*` route ensures the request reaches your BEFORE hook.
+
+## 12. Sessions
+
+Cookie-based signed sessions. The session cookie is written via `res.cookie()` internally, so all standard cookie options (domain, secure, samesite, etc.) are supported:
+
+```python
+app.sessions("my-secret-key", cookie_name="session", max_age=3600)
+
+# With cookie options (forwarded to res.cookie()):
+app.sessions("my-secret-key",
+    cookie_name="session",
+    max_age=3600,
+    domain=".example.com",     # share session across subdomains
+    secure=True,               # HTTPS only
+    samesite="Strict",         # override default "Lax"
+)
+```
+
+Defaults (if not overridden): `path="/"`, `httponly=True`, `samesite="Lax"`.
+
+### Subdomain Sessions
+
+By default `sessions()` only applies to the `www` (default) subdomain. Use `subdomains` to enable session load/save hooks on specific subdomains:
+
+```python
+api = app.subdomain("api")
+my = app.subdomain("my")
+
+# Enable sessions on www, api, and my subdomains:
+app.sessions("my-secret-key",
+    cookie_name="session",
+    max_age=3600,
+    subdomains=["www", "api", "my"],
+    domain=".example.com",     # share the cookie across subdomains
+)
+```
+
+The session cookie (with `domain=".example.com"`) is sent by the browser to all subdomains, but the load/save hooks only run on the subdomains you specify. This avoids unnecessary session deserialization on subdomains that don't need it (e.g., a static assets subdomain).
+
+```python
+async def login(req, res, ctx):
+    ctx.session["user_id"] = 123
+    res.body = "Logged in"
+
+async def dashboard(req, res, ctx):
+    user_id = ctx.session.get("user_id")
+    if not user_id:
+        res.abort("Not authenticated")
+        res.status = 401
+        return
+    res.body = f"Welcome user {user_id}"
+```
+
+Sessions use `SecureSerializer` which provides HMAC-SHA256 signing with timestamps. Session data is wrapped in a `Look` object, so dot-notation access works:
+
+```python
+async def handler(req, res, ctx):
+    ctx.session.user_id   # dot-notation access
+    ctx.session["role"]   # dict-style access
+```
+
+## 13. Subdomain Management
+
+```python
+# Register a subdomain:
+api = app.subdomain("api")
+api.GET("/users", "handlers.api.users.list_users")
+api.POST("/users", "handlers.api.users.create_user")
+api.schema.POST("/users", expects=CreateUser)  # schema works on subdomains too
+
+# Another subdomain:
+admin = app.subdomain("admin")
+admin.GET("/dashboard", "handlers.admin.dashboard.index")
+admin.BEFORE("/*", "middleware.admin_auth.check")
+
+# Wildcard subdomain (matches any subdomain):
+wild = app.subdomain("*")
+wild.GET("/", "handlers.wildcard.index")
+```
+
+Routes registered without a subdomain default to `www` (the default subdomain).
+
+Heaven resolves subdomains from the `Host` header. For `api.example.com`, the subdomain is `api`. For `example.com` or IP addresses, it defaults to `www`.
+
+### Subdomain-Scoped Features
+
+Subdomains support all the same methods as the app:
+
+```python
+api = app.subdomain("api")
+api.GET("/route", "handlers.api.route.get")
+api.POST("/route", "handlers.api.route.create")
+api.BEFORE("/route", "middleware.api_auth.check")
+api.AFTER("/route", "middleware.api_logging.log")
+api.ASSETS("static")               # Subdomain-scoped static files
+api.doc("/docs")                   # Subdomain-scoped docs
+api.doc("/docs", title="My API", version="1.0.0", favicon="/static/favicon.ico")
+api.schema.POST("/route", expects=Schema)
+```
+
+## 14. Static Assets
+
+```python
+app.ASSETS("static", relative_to=__file__)
+# Serves files from ./static/ at /static/*
+# e.g. /static/css/main.css -> ./static/css/main.css
+
+# Custom route:
+app.ASSETS("public", route="/assets/*", relative_to=__file__)
+```
+
+## 15. WebSockets
+
+```python
+app.WS("/chat", "handlers.chat.ws_handler")
+# Or:
+app.SOCKET("/chat", "handlers.chat.ws_handler")
+app.WEBSOCKET("/chat", "handlers.chat.ws_handler")
+```
+
+### WebSocket Handler Signature
+
+WebSocket handlers have a different signature from HTTP handlers. They receive 4 arguments:
+
+```python
+async def ws_handler(sender, receiver, request, context):
+    # sender(data) - async function to send data to the client
+    # receiver()   - async function to receive data from the client
+    # request      - Request object (has params, queries, headers, etc.)
+    # context      - Context object (per-connection scoped)
+
+    while True:
+        msg = await receiver()        # receive message from client
+        if msg is None:
+            break
+        await sender(f"Echo: {msg}")  # send message to client
+```
+
+- `sender(data)` accepts `str` (sent as text) or `bytes` (sent as binary)
+- `receiver()` returns the message text or bytes, or `None` on disconnect
+
+## 16. Mounting (Composing Apps)
+
+```python
+users_app = App()
+users_app.GET("/", "handlers.users.list_users")
+users_app.POST("/", "handlers.users.create_user")
+users_app.ONCE("startup", "lifecycle.users.init_db")
+
+app.mount(users_app)
+# users_app routes, hooks, and lifecycle events are merged into app
+
+# isolated=False shares buckets and configuration:
+app.mount(users_app, isolated=False)
+```
+
+## 17. Plugins
+
+```python
+class MyPlugin:
+    def install(self, app):
+        app.BEFORE("/*", self.middleware)
+        app.ONCE(self.setup)
+
+    async def setup(self, app):
+        pass
+
+    async def middleware(self, req, res, ctx):
+        pass
+
+app.plugin(MyPlugin())
+```
+
+## 18. Configuration
+
+Load configuration from a dict or callable:
+
+```python
+# From a dict:
+app = App(configurator={"DB_URL": "postgres://localhost/mydb", "SECRET": "my-secret"})
+
+# From a callable that returns a dict:
+def load_config():
+    return {"DB_URL": os.environ["DB_URL"], "SECRET": os.environ["SECRET"]}
+
+app = App(configurator=load_config)
+
+# Access config values:
+db_url = app.CONFIG("DB_URL")
+```
+
+## 19. Security - SecureSerializer
+
+For signing and verifying tokens/data (used internally by sessions):
+
+```python
+from heaven.security import SecureSerializer, BadSignature, SignatureExpired
+
+signer = SecureSerializer("my-secret-key", salt="auth-tokens")
+
+# Sign data:
+token = signer.dumps({"user_id": 123, "role": "admin"})
+# Returns: "base64payload.base64timestamp.base64signature"
+
+# Verify and decode:
+data = signer.loads(token, max_age=3600)
+# Returns: {"user_id": 123, "role": "admin"}
+# Raises SignatureExpired if token is older than max_age
+# Raises BadSignature if tampered
+
+# With schema validation:
+from typing import TypedDict
+class TokenPayload(TypedDict):
+    user_id: int
+    role: str
+
+data = signer.loads(token, type=TokenPayload)
+# Validates token payload against schema using pytastic
+```
+
+Key rotation support:
+
+```python
+signer = SecureSerializer(
+    ["new-secret", "old-secret"],  # Signs with first, verifies against all
+    salt="auth"
+)
+```
+
+## 20. Testing with Earth
+
+Earth is heaven's built-in test client:
+
+```python
+import unittest
+from heaven import App
+
+class TestAPI(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        self.app = App()
+        # register routes...
+        self.app.GET("/hello", hello_handler)
+
+    async def test_hello(self):
+        async with self.app.earth.test() as client:
+            req, res, ctx = await client.GET("/hello")
+            self.assertEqual(res.status, 200)
+
+    async def test_create(self):
+        async with self.app.earth.test() as client:
+            req, res, ctx = await client.POST("/users",
+                body={"name": "Ray", "email": "ray@example.com"}
+            )
+            self.assertEqual(res.status, 201)
+            data = res.json
+            self.assertEqual(data["name"], "Ray")
+```
+
+### Earth Methods
+
+```python
+async with app.earth.test() as client:
+    req, res, ctx = await client.GET("/path")
+    req, res, ctx = await client.POST("/path", body={...})
+    req, res, ctx = await client.PUT("/path", body={...})
+    req, res, ctx = await client.PATCH("/path", body={...})
+    req, res, ctx = await client.DELETE("/path")
+```
+
+### File Uploads
+
+```python
+async with app.earth.test() as client:
+    req, res, ctx = await client.upload("/upload",
+        files={"avatar": ("photo.jpg", b"image-data")},
+        data={"username": "ray"}
+    )
+```
+
+### WebSocket Testing
+
+```python
+async with app.earth.test() as client:
+    ws = client.SOCKET("/chat")
+    await ws.connect()
+    await ws.send("hello")
+    msg = await ws.receive(timeout=2.0)
+    await ws.close()
+```
+
+### Session Tracking
+
+`test(track_session=True)` (default) automatically tracks cookies across requests:
+
+```python
+async with app.earth.test() as client:
+    await client.POST("/login", body={"user": "admin"})
+    # Session cookie is automatically sent on next request:
+    req, res, ctx = await client.GET("/dashboard")
+```
+
+### Mocking Lifecycle Hooks
+
+Register swaps BEFORE entering the test context manager, so they take effect during startup:
+
+```python
+async def real_startup(app):
+    app.keep("db", await connect_to_database())
+
+async def mock_startup(app):
+    app.keep("db", FakeDB())
+
+app.earth.swap(real_startup, mock_startup)
+async with app.earth.test() as client:
+    # mock_startup runs instead of real_startup
+    req, res, ctx = await client.GET("/data")
+```
+
+### Bypassing Middleware in Tests
+
+```python
+app.earth.bypass(auth_middleware)
+async with app.earth.test() as client:
+    # auth_middleware is skipped during this test
+    req, res, ctx = await client.GET("/protected")
+```
+
+### Atomic Test Factories
+
+For unit-testing individual components without full request simulation:
+
+```python
+req = app.earth.request("/users/1", method="GET")
+res = app.earth.response()
+ctx = app.earth.context()
+
+# Or all three at once:
+req, res, ctx = app.earth.trio("/users/1", method="GET")
+
+# Short aliases:
+req = app.earth.req("/users/1")
+res = app.earth.res()
+ctx = app.earth.ctx()
+```
+
+## 21. Lookup Utility
+
+Dot-notation access for dictionaries:
+
+```python
+from heaven.utils import Lookup
+
+config = Lookup({"database": {"host": "localhost", "port": 5432}})
+print(config.database.host)   # "localhost"
+print(config.database.port)   # 5432
+```
+
+Also available via `app._`:
+
+```python
+app.keep("settings", {"theme": "dark"})
+print(app._.settings.theme)  # "dark"
+```
+
+## 22. Imports & Error Classes
+
+### Top-level imports from heaven:
+
+```python
+from heaven import App, Application, Router, Server
+from heaven import Request, Response, Context, Key
+from heaven import Pytastic, PytasticError, ValidationError
+```
+
+### Error classes:
+
+```python
+from heaven.errors import AbortException, SubdomainError, UrlError, UrlDuplicateError
+```
+
+- `AbortException` - raised internally when `res.abort()` is called
+- `SubdomainError` - raised for subdomain configuration errors
+- `UrlError` - raised when a route doesn't start with `/`
+- `UrlDuplicateError` - raised when registering a duplicate route
+
+### Security exceptions:
+
+```python
+from heaven.security import SecurityError, BadSignature, SignatureExpired
+```
+
+## 23. Full Application Example
+
+Project structure:
+
+```
+myapp/
+├── main.py
+├── schemas.py
+├── handlers/
+│   └── todos.py
+└── middleware/
+    └── logging.py
+```
+
+```python
+# schemas.py
+from typing import TypedDict, Annotated
+
+class CreateTodo(TypedDict):
+    title: Annotated[str, "min_len=1; max_len=200"]
+    done: bool
+
+class Todo(TypedDict):
+    id: int
+    title: str
+    done: bool
+```
+
+```python
+# handlers/todos.py
+from heaven import Key
+
+db_key = Key[list]("todos")
+
+async def list_todos(req, res, ctx):
+    todos = req.app.peek(db_key)
+    res.body = todos
+    res.status = 200
+
+async def create_todo(req, res, ctx):
+    todos = req.app.peek(db_key)
+    todo = {"id": len(todos) + 1, **req.data}
+    todos.append(todo)
+    res.body = todo
+    res.status = 201
+```
+
+```python
+# middleware/logging.py
+async def log_request(req, res, ctx):
+    print(f"{req.method} {req.url}")
+```
+
+```python
+# main.py
+from typing import List
+from heaven import App, Key
+from schemas import CreateTodo, Todo
+
+app = App(protect_output=True)
+
+db_key = Key[list]("todos")
+
+# -- Lifecycle --
+async def startup(app):
+    app.keep(db_key, [])
+
+app.ONCE(startup)
+
+# -- Middleware --
+app.BEFORE("/*", "middleware.logging.log_request")
+
+# -- Schema + Routes --
+app.schema.GET("/todos", returns=List[Todo], summary="List all todos")
+app.GET("/todos", "handlers.todos.list_todos")
+
+app.schema.POST("/todos", expects=CreateTodo, returns=Todo, summary="Create a todo")
+app.POST("/todos", "handlers.todos.create_todo")
+
+# -- Docs & CORS --
+app.DOCS("/docs", title="Todo API", version="1.0.0")
+app.cors(origins=["*"])
+```

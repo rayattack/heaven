@@ -1,7 +1,7 @@
-site_name: Heaven Web Framework (Routerling)
+site_name: Heaven
 site_url: https://rayattack.github.io/heaven
 
-site_description: Web Application Framework
+site_description: An async Python web framework you can master in 30 minutes.
 site_author: Raymond Ortserga
 
 repo_name: rayattack/heaven
@@ -9,12 +9,37 @@ repo_url: https://www.github.com/rayattack/heaven
 
 theme:
   name: 'material'
-  palette:
-    primary: black
-  include_search_page: false
-  feature:
-    tabs: true
   logo: 'images/logo.png'
+  favicon: 'images/logo.png'
+  include_search_page: false
+  icon:
+    repo: fontawesome/brands/github
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: black
+      accent: deep orange
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: black
+      accent: deep orange
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.top
+    - navigation.footer
+    - navigation.indexes
+    - toc.follow
+    - content.code.copy
+    - content.code.annotate
+    - search.highlight
+    - search.suggest
 
 plugins:
   - search
@@ -24,19 +49,33 @@ plugins:
       minify_html: true
 
 nav:
-  - Heaven v0.6.2: index.md
-  - Min. 1&colon; Quickstart: quickstart.md
-  - Min. 2&colon; Request to Heaven: request.md
-  - Min. 3&colon; Response from Heaven: response.md
-  - Min. 4&colon; Context of Heaven: context.md
-  - Min. 5&colon; Application: router.md
-  - Min. 6&colon; Rendering HTML: html.md
-  - Min. 7&colon; Sip some coffee: coffee.md
-  - Min. 8&colon; Mounting Apps: mount.md
-  - Min. 9&colon; Code Snippets: snippets.md
-  - Min. 10&colon; Congratulate Yourself: congrats.md
-  - Optional&colon; Full API Reference: api.md
-  - Optional&colon; Library of Examples: examples.md
+  - Introduction: index.md
+  - The 30 Minutes:
+    - 'Min 01-02 - The Beginning': quickstart.md
+    - 'Min 03-04 - The Command Line': cli.md
+    - 'Min 05-06 - The Router': router.md
+    - 'Min 07-08 - Subdomains': subdomains.md
+    - 'Min 09-10 - The Request': request.md
+    - 'Min 11-12 - The Response': response.md
+    - 'Min 13-14 - HTML & Assets': html.md
+    - 'Min 15-16 - The Context': context.md
+    - 'Min 17-18 - Hooks': hooks.md
+    - 'Min 19-20 - Validation': schema.md
+    - 'Min 21-22 - API Docs': openapi.md
+    - 'Min 23-24 - Testing with Earth': earth.md
+    - 'Min 25-26 - Background Work': daemons.md
+    - 'Min 27-28 - Security': security.md
+    - 'Min 29-30 - Deployment': deployment.md
+    - 'Mastery': congrats.md
+  - Reference:
+    - 'API Reference': api.md
+    - 'Serving Files': files.md
+    - 'Performance': performance.md
+    - 'Recipes': examples.md
+    - 'Going to Production': production.md
+  - Plugins:
+    - 'Plugins System': plugins.md
+    - 'Marketplace': marketplace.md
 
 extra_css:
   - 'css/custom.css'
@@ -44,11 +83,14 @@ extra_css:
 
 markdown_extensions:
   - markdown.extensions.admonition
+  - markdown.extensions.attr_list
+  - markdown.extensions.md_in_html
   - markdown.extensions.codehilite:
       guess_lang: false
   - markdown.extensions.def_list
   - markdown.extensions.footnotes
   - markdown.extensions.meta
+  - markdown.extensions.tables
   - markdown.extensions.toc:
       permalink: true
   - pymdownx.arithmatex
@@ -57,18 +99,28 @@ markdown_extensions:
   - pymdownx.caret
   - pymdownx.critic
   - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
   - pymdownx.inlinehilite
   - pymdownx.keys
   - pymdownx.magiclink:
       repo_url_shorthand: true
-      user: squidfunk
-      repo: mkdocs-material
+      user: rayattack
+      repo: heaven
   - pymdownx.mark
   - pymdownx.smartsymbols
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
   - pymdownx.tasklist:
       custom_checkbox: true
   - pymdownx.tilde
+
 extra_javascript:
   - js/termynal.js
   - js/custom.js

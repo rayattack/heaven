@@ -1,4 +1,5 @@
 from json import dumps, load
+from typing import TypedDict
 from unittest import TestCase
 from unittest.case import skip
 from unittest.mock import MagicMock
@@ -99,3 +100,15 @@ class TestRequest(TestCase):
     @skip
     def test_stream(self):
         stream = self.request.stream()
+
+    def test_generic_schema_data(self):
+        class User(TypedDict):
+            name: str
+        
+        self.request._schema = User
+        self.request._body = b'{"name": "test"}'
+        self.request._data = None # reset data
+        
+        data = self.request.data
+        self.assertIsInstance(data, dict)
+        self.assertEqual(data['name'], "test")

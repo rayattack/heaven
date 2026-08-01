@@ -1,17 +1,19 @@
 import mimetypes
 from http import HTTPStatus
-from os import path
+from os import path, sep
 from typing import Any, AsyncGenerator, Optional, Union, TYPE_CHECKING
-import msgspec
+import traceback
+import sys
 
 from functools import singledispatch, update_wrapper
+from orjson import dumps, loads
 
 from .constants import MESSAGE_NOT_FOUND, STATUS_NOT_FOUND
 from .context import Context
 from .tutorials import get_guardian_angel_html, ASYNC_RENDER, NO_TEMPLATING, SYNC_RENDER
 from .request import Request
 if TYPE_CHECKING:
-    from router import App  # pragma: no cover
+    from router import App, Router  # pragma: no cover
 
 
 # For compatibility with older versions of python3 using this
@@ -20,7 +22,7 @@ def MethodDispatch(method):
     decorated = singledispatch(method)
     def decorator(*args, **kwargs):
         return decorated.dispatch(args[1].__class__)(*args, **kwargs)
-    decorator.register = decorated.register
+    decorator.register = decorated.register # type: ignore
     update_wrapper(decorator, method)
     return decorator
 
@@ -41,16 +43,18 @@ def _(payload):
 def is_async_gen(obj):
     return hasattr(obj, '__aiter__') or hasattr(obj, '__anext__')
 
+
 @_body.register(object)
 def _(payload):
     if is_async_gen(payload):
         return payload
     return payload
 
-def _get_guardian_angel(res: 'Response', error: str, snippet: str):
+def _get_guardian_angel(res: 'Response', exc: Exception):
     res.headers = 'Content-Type', 'text/html'
     res.status = HTTPStatus.INTERNAL_SERVER_ERROR
-    res.body = get_guardian_angel_html(error, snippet)
+    tb = traceback.format_exc()
+    res.body = get_guardian_angel_html(res._req, exc, tb)
 
 
 class Response():
@@ -65,20 +69,20 @@ class Response():
         self._headers = []
         self._status = STATUS_NOT_FOUND
         self._template = None
-        self._mounted_from_application = None
+        self._mounted_from_application : Union['Router', None] = None
 
     @MethodDispatch
     def abort(self, payload):
         self._abort = True
         self._body = payload
 
-    @abort.register(str)
+    @abort.register(str) # type: ignore
     def _(self, payload: str):
         self._abort = True
         self._body = payload.encode()
 
-    @abort.register(int)
-    @abort.register(float)
+    @abort.register(int) # type: ignore
+    @abort.register(float) # type: ignore
     def _(self, payload):
         self._abort = True
         self._body = f'{payload}'.encode()
@@ -103,16 +107,33 @@ class Response():
     def json(self) -> Any:
         if isinstance(self.body, (dict, list)):
             return self.body
-        return msgspec.json.decode(self.body)
+        return loads(self.body)
 
     @property
     def text(self) -> str:
         return self.body.decode()
 
+    @property
+    def http(self):
+        return HTTPStatus
+
     def header(self, key, val) -> 'Response':
+        """Set `key` to `val`, replacing any value the response already carries
+        for it, matched case-insensitively: the last write wins, so setting a
+        header twice sends it once. `Set-Cookie` is the exception and accumulates
+        one line per cookie, which is how the protocol requires cookies to travel.
+        A list, tuple or set value is joined with commas, the HTTP form of a
+        multi-valued header, and `None` removes the header entirely."""
         _encode = lambda k: k.encode('utf-8') if isinstance(k, str) else k
-        value = _encode(key), _encode(val)
-        self._headers.append(value)
+        name = _encode(key)
+        needle = name.lower()
+        if val is None or needle != b'set-cookie':
+            self._headers = [header for header in self._headers if header[0].lower() != needle]
+        if val is None: return self
+
+        if isinstance(val, (list, tuple, set)): val = ', '.join(map(str, val))
+        else: val = str(val)
+        self._headers.append((name, _encode(val)))
         return self
 
     @property
@@ -164,7 +185,7 @@ class Response():
                     raise ValueError(f'SameSite must be one of Strict, Lax, None, got {val}')
                 val = _val
             cookie_string += f'; {_key}={val}'
-        self.headers = 'Set-Cookie', f'{name}={value}'
+        self.headers = 'Set-Cookie', cookie_string
 
     async def render(self, name: str, **contexts) -> 'Response':
         """Serve html file walking up parent router/app tree until base parent if necessary"""
@@ -172,13 +193,16 @@ class Response():
         self.headers = 'content-type', 'text/html; charset=utf-8'
         # if self._mounted_from_application: templater = self._mounted_from_application._templater or templater
         if not templater:
-            return _get_guardian_angel(self, 'You did not enable templating', NO_TEMPLATING)
+            _get_guardian_angel(self, ValueError('Templating not enabled. Call app.TEMPLATES() first.'))
+            return self
 
         if not templater.is_async:
-            return _get_guardian_angel(self, 'Trying to use Sync HTML Renderer to render HTML Async', ASYNC_RENDER)
+            _get_guardian_angel(self, RuntimeError('Trying to use Sync HTML Renderer to render HTML Async'))
+            return self
 
         template = templater.get_template(name)
-        self.body = await template.render_async({'ctx': self._ctx, 'res': self, 'req': self._req, **contexts})
+        html = await template.render_async({'ctx': self._ctx, 'res': self, 'req': self._req, **contexts})
+        self.body = html
         return self
 
     def renders(self, name: str, **contexts) -> 'Response':
@@ -186,12 +210,15 @@ class Response():
         templater = self._app._templater
         self.headers = 'content-type', 'text/html; charset=utf-8'
         if not templater:
-            return _get_guardian_angel(self, 'You did not enable templating', NO_TEMPLATING)
+            _get_guardian_angel(self, ValueError('Templating not enabled. Call app.TEMPLATES() first.'))
+            return self
 
         if templater.is_async:
-            return _get_guardian_angel(self, 'Trying to use Async HTML Renderer to render Sync HTML', SYNC_RENDER)
+            _get_guardian_angel(self, RuntimeError('Trying to use Async HTML Renderer to render Sync HTML'))
+            return self
         template = templater.get_template(name)
-        self.body = template.render({'ctx': self._ctx, 'res': self, 'req': self._req, **contexts})
+        html = template.render({'ctx': self._ctx, 'res': self, 'req': self._req, **contexts})
+        self.body = html
         return self
 
     def redirect(self, location, permanent=False) -> 'Response':
@@ -221,9 +248,13 @@ class Response():
             
             async def sse_wrapper():
                 async for item in generator:
-                    # If item is a dict or list, encode as JSON
+                    # If item is a dict or list, encode as JSON. dumps() hands back
+                    # bytes, which must be decoded before it reaches the f-string or
+                    # the frame carries the bytes repr rather than the payload.
                     if isinstance(item, (dict, list)):
-                        item = msgspec.json.encode(item).decode()
+                        item = dumps(item).decode()
+                    elif isinstance(item, (bytes, bytearray)):
+                        item = item.decode()
                     yield f"data: {item}\n\n".encode()
             self.body = sse_wrapper()
         else:
@@ -256,8 +287,26 @@ class Response():
         template = templater.get_template(name)
         return await template.render_async({'ctx': self._ctx, **contexts})
 
-    def file(self, filepath: str, filename: Optional[str] = None, chunk_size: int = 4096) -> 'Response':
-        """Serve a file from the filesystem with streaming support"""
+    def file(self, filepath: str, filename: Optional[str] = None, chunk_size: int = 4096, within: Optional[str] = None) -> 'Response':
+        """Serve a file from the filesystem with streaming support.
+
+        `within` confines the read to one directory. It can be anywhere the process
+        can reach - a folder in the project, `/var/lib/app/uploads`, a mounted share -
+        and is taken as given when absolute, or resolved against the working directory
+        when relative. `filepath` may be either relative to `within` or the full path
+        to a file under it; anything resolving outside is a 404, which covers `..`
+        segments, absolute paths pointing elsewhere, and symlinks leaving the tree.
+
+            res.file(req.params.get('name'), within='/var/lib/app/uploads')
+        """
+        if within is not None:
+            root = path.realpath(within)
+            filepath = path.realpath(path.join(root, filepath))
+            if filepath != root and not filepath.startswith(root + sep):
+                self.status = HTTPStatus.NOT_FOUND
+                self.body = b'File not found'
+                return self
+
         if not path.isfile(filepath):
             self.status = HTTPStatus.NOT_FOUND
             self.body = b'File not found'

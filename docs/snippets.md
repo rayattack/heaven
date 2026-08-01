@@ -1,4 +1,6 @@
-# Minute 9: Centralized Middleware & Snippets
+# Middleware Snippets
+
+Two short patterns for `.BEFORE` hooks. For the full treatment see [Hooks](hooks.md), and for production-ready versions see [Recipes](examples.md).
 
 Heaven is extremely unopinionated, but it provides powerful tools for centralized control. This section shows how to use `.BEFORE` hooks for common tasks like Authentication and Data Validation.
 
@@ -18,8 +20,8 @@ async def protect(req: Request, res: Response, ctx: Context):
 
     # Use your preferred JWT or other validation scheme here
     if not token or token != "secret-token":
-        # res.abort stops the request cycle immediately
-        res.abort('Unauthorized Access', status=HTTPStatus.UNAUTHORIZED)
+        res.status = HTTPStatus.UNAUTHORIZED
+        res.abort('Unauthorized Access')
         return
 
     # Keep the user in context for the actual handler
@@ -53,7 +55,8 @@ async def validate_json(req: Request, res: Response, ctx: Context):
             raise ValueError("Email is required")
         ctx.keep('payload', data)
     except Exception as e:
-        res.abort(f"Invalid Data: {str(e)}", status=400)
+        res.status = 400
+        res.abort(f"Invalid Data: {str(e)}")
 
 app.BEFORE('/api/v1/login', validate_json)
 
@@ -65,5 +68,7 @@ async def login(req: Request, res: Response, ctx: Context):
 app.GET('/api/v1/login', login)
 ```
 
-> [!TIP]
-> Use `.BEFORE('*', handler)` to run a hook for every single request in your application (e.g., for logging or CORS).
+!!! tip "Matching every request"
+    Use `.BEFORE('/*', handler)` to run a hook for every request in your application, for logging, timing, or headers.
+
+    The leading slash is required: `.BEFORE('*', handler)` raises `UrlError`. `/*` hooks run **before** more specific hooks, so a global guard precedes the route hooks it protects. See [execution order](hooks.md#execution-order).

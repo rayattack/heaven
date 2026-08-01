@@ -1,14 +1,19 @@
 import unittest
 import heaven
-from msgspec import Struct
+
 
 class TestLibrary(unittest.TestCase):
     def test_version(self):
-        self.assertEqual(heaven.__version__, '0.6.2')
+        self.assertEqual(heaven.__version__, '2.0.0')
 
     def test_schema_export(self):
-        from heaven import Schema
-        self.assertIs(Schema, Struct)
+        from pytastic import Pytastic
+        assert heaven.Pytastic is Pytastic
+    
+    def test_exceptions_export(self):
+        from pytastic.exceptions import PytasticError, ValidationError
+        assert heaven.PytasticError is PytasticError
+        assert heaven.ValidationError is ValidationError
 
 if __name__ == '__main__':
     unittest.main()

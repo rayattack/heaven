@@ -1,47 +1,124 @@
-/* code {
-    color: #000 !important;
+/* ---------------------------------------------------------------------------
+   Heaven docs — theme polish
+   Works with the light/dark palette toggle configured in mkdocs.yml.
+   Colours are expressed against Material's own CSS variables so both
+   schemes stay correct without duplicating rules.
+--------------------------------------------------------------------------- */
+
+:root {
+  --hv-accent: #ff6a3d;
+  --hv-radius: 8px;
 }
 
-.md-main {
-    background-color: black !important;
-    color: white;
+/* --- Typography ---------------------------------------------------------- */
+
+.md-typeset h1 {
+  font-weight: 700;
+  letter-spacing: -0.02em;
 }
 
-.md-main h1, H5 {
-    color: #fff !important;
-}
-.md-main .md-nav a {
-    color: #ccc;
-}
-.md-main .md-nav a:active {
-    color: #b36363 !important;
-    font-weight: 900;
-}
-.md-main table, table td, table th{
-    border: 1px solid #ccc;
-    border-collapse: collapse;
+.md-typeset h2 {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin-top: 2.2em;
 }
 
-
-pre {
-    background-color: #ccc !important;
-} */
-
-.o+.n{
-    color: #864da0;
+/* Give each chapter's leading paragraph a little more presence. */
+.md-typeset h1 + p {
+  font-size: 1.05rem;
+  line-height: 1.7;
+  opacity: 0.9;
 }
+
+/* --- Tables -------------------------------------------------------------- */
+
+.md-typeset table:not([class]) {
+  border-radius: var(--hv-radius);
+  overflow: hidden;
+  font-size: 0.76rem;
+}
+
+.md-typeset table:not([class]) th {
+  font-weight: 600;
+}
+
+/* --- Mermaid diagrams ---------------------------------------------------- */
+
+.md-typeset .mermaid {
+  margin: 1.6em 0;
+  padding: 1.2em 0.5em;
+  border-radius: var(--hv-radius);
+  background: var(--md-code-bg-color);
+  text-align: center;
+  /* Wide diagrams scroll inside their own box instead of the page. */
+  overflow-x: auto;
+}
+
+/* --- Admonitions --------------------------------------------------------- */
+
+.md-typeset .admonition,
+.md-typeset details {
+  border-radius: var(--hv-radius);
+  border-left-width: 3px;
+  font-size: 0.75rem;
+}
+
+/* Danger callouts flag real footguns in this documentation — make them read
+   as warnings rather than decoration. */
+.md-typeset .admonition.danger {
+  border-left-width: 4px;
+}
+
+/* --- Grid cards ---------------------------------------------------------- */
+
+.md-typeset .grid.cards > ul > li {
+  border-radius: var(--hv-radius);
+  transition: border-color 125ms, box-shadow 125ms;
+}
+
+.md-typeset .grid.cards > ul > li:hover {
+  border-color: var(--hv-accent);
+  box-shadow: 0 0 0 1px var(--hv-accent);
+}
+
+/* --- Code ---------------------------------------------------------------- */
+
+.md-typeset pre > code {
+  border-radius: var(--hv-radius);
+}
+
+.md-typeset code {
+  border-radius: 4px;
+}
+
+/* Original syntax tweak: operator followed by name. */
+.o + .n {
+  color: #864da0;
+}
+
+[data-md-color-scheme="slate"] .o + .n {
+  color: #c792ea;
+}
+
+/* --- Termynal (animated console blocks) ---------------------------------- */
 
 .termynal-comment {
-    color: #4a968f;
-    font-style: italic;
-    display: block;
+  color: #4a968f;
+  font-style: italic;
+  display: block;
 }
-  
+
 .termy {
-    /* For right to left languages */
-    direction: ltr;
+  /* For right to left languages */
+  direction: ltr;
 }
-  
+
 .termy [data-termynal] {
-    white-space: pre-wrap;
+  white-space: pre-wrap;
+}
+
+/* --- Footer nav ---------------------------------------------------------- */
+
+.md-footer__link {
+  opacity: 0.85;
 }
